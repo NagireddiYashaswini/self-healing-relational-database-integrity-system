@@ -1,0 +1,245 @@
+import networkx as nx
+from typing import Dict, Any, List, Optional, Set
+from backend.app.database.connection import get_connection, validate_identifier
+
+class DependencyAnalyzer:
+    def __init__(self):
+        pass
+
+    def build_graph(self) -> Dict[str, Any]:
+        """
+        Builds a directed dependency graph of the database schema using NetworkX.
+        Nodes represent tables.
+        Directed edges represent foreign key relationships: Parent Table -> Child Table.
+        (Edge direction: Data in Parent must exist before Child can reference it).
+        """
+        conn = get_connection()
+        G = nx.DiGraph()
+
+        try:
+            with conn.cursor() as cur:
+                # 1. Fetch all tables
+                cur.execute("""
+                    SELECT TABLE_NAME, ENGINE, TABLE_ROWS
+                    FROM information_schema.TABLES
+                    WHERE TABLE_SCHEMA = DATABASE()
+                """)
+                tables = cur.fetchall()
+
+                # Fetch issue counts per table
+                cur.execute("""
+                    SELECT table_name, COUNT(*) AS issue_count
+                    FROM integrity_issues
+                    WHERE status IN ('OPEN', 'REVIEWED', 'APPROVED')
+                    GROUP BY table_name
+                """)
+                issue_counts = {r["table_name"]: r["issue_count"] for r in cur.fetchall()}
+
+                for t in tables:
+                    t_name = t["TABLE_NAME"]
+                    if t_name.startswith("staging_") or t_name.startswith("legacy_"):
+                        table_type = "STAGING"
+                    elif t_name == "quarantine_records":
+                        table_type = "QUARANTINE"
+                    elif t_name in ["integrity_rules", "scan_runs", "integrity_issues", 
+                                    "repair_recommendations", "repair_executions", 
+                                    "audit_logs", "transaction_logs", "recovery_checkpoints", 
+                                    "database_metadata"]:
+                        table_type = "SYSTEM"
+                    else:
+                        table_type = "BUSINESS"
+
+                    G.add_node(
+                        t_name,
+                        id=t_name,
+                        label=t_name,
+                        table_type=table_type,
+                        row_count=t["TABLE_ROWS"] or 0,
+                        issue_count=issue_counts.get(t_name, 0)
+                    )
+
+                # 2. Fetch declared foreign keys from INFORMATION_SCHEMA
+                cur.execute("""
+                    SELECT 
+                        TABLE_NAME AS child_table,
+                        COLUMN_NAME AS child_column,
+                        REFERENCED_TABLE_NAME AS parent_table,
+                        REFERENCED_COLUMN_NAME AS parent_column,
+                        CONSTRAINT_NAME AS constraint_name
+                    FROM information_schema.KEY_COLUMN_USAGE
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND REFERENCED_TABLE_NAME IS NOT NULL
+                """)
+                fk_rows = cur.fetchall()
+
+                for fk in fk_rows:
+                    p = fk["parent_table"]
+                    c = fk["child_table"]
+                    # Edge direction: Parent -> Child
+                    G.add_edge(
+                        p, c,
+                        from_node=p,
+                        to_node=c,
+                        label=f"{c}.{fk['child_column']} -> {p}.{fk['parent_column']}",
+                        relationship_type="PHYSICAL_FK",
+                        constraint_name=fk["constraint_name"]
+                    )
+
+                # 3. Also include logical relationships from active integrity_rules (e.g. staging tables)
+                cur.execute("""
+                    SELECT target_table, target_column, parent_table, parent_column, rule_code
+                    FROM integrity_rules
+                    WHERE rule_type = 'ORPHAN' AND parent_table IS NOT NULL AND is_enabled = TRUE
+                """)
+                logical_rules = cur.fetchall()
+                for lr in logical_rules:
+                    p = lr["parent_table"]
+                    c = lr["target_table"]
+                    if not G.has_edge(p, c):
+                        G.add_edge(
+                            p, c,
+                            from_node=p,
+                            to_node=c,
+                            label=f"{c}.{lr['target_column']} -> {p}.{lr['parent_column']} (Logical)",
+                            relationship_type="LOGICAL_RULE",
+                            constraint_name=lr["rule_code"]
+                        )
+
+            # Analyze graph properties
+            has_cycles = not nx.is_directed_acyclic_graph(G)
+            cycle_nodes = []
+            if has_cycles:
+                try:
+                    cycles = list(nx.simple_cycles(G))
+                    cycle_nodes = list(set([node for cycle in cycles for node in cycle]))
+                except Exception:
+                    cycle_nodes = []
+
+            topological_order = []
+            if not has_cycles:
+                try:
+                    topological_order = list(nx.topological_sort(G))
+                except Exception:
+                    topological_order = []
+
+            nodes = [
+                {
+                    "id": n,
+                    "label": n,
+                    "table_type": G.nodes[n].get("table_type", "BUSINESS"),
+                    "row_count": G.nodes[n].get("row_count", 0),
+                    "issue_count": G.nodes[n].get("issue_count", 0)
+                }
+                for n in G.nodes()
+            ]
+
+            edges = [
+                {
+                    "from_node": u,
+                    "to_node": v,
+                    "label": data.get("label", ""),
+                    "relationship_type": data.get("relationship_type", "PHYSICAL_FK")
+                }
+                for u, v, data in G.edges(data=True)
+            ]
+
+            return {
+                "nodes": nodes,
+                "edges": edges,
+                "has_cycles": has_cycles,
+                "cycle_nodes": cycle_nodes,
+                "topological_order": topological_order
+            }
+
+        finally:
+            conn.close()
+
+    def get_table_neighborhood(self, table_name: str) -> Optional[Dict[str, Any]]:
+        """Returns direct parents, children, and dependency chain for a specific table."""
+        full_graph = self.build_graph()
+        known_tables = {n["id"] for n in full_graph.get("nodes", [])}
+        if table_name not in known_tables:
+            return None
+
+        G = nx.DiGraph()
+        for n in full_graph.get("nodes", []):
+            G.add_node(n["id"])
+        for e in full_graph["edges"]:
+            G.add_edge(e["from_node"], e["to_node"], label=e["label"])
+
+        parents = list(G.predecessors(table_name))
+        children = list(G.successors(table_name))
+
+        # Descendant blast radius (all tables that depend on this table)
+        descendants = list(nx.descendants(G, table_name))
+        ancestors = list(nx.ancestors(G, table_name))
+
+        return {
+            "table_name": table_name,
+            "direct_parents": parents,
+            "direct_children": children,
+            "ancestors": ancestors,
+            "descendants": descendants,
+            "blast_radius_tables": descendants
+        }
+
+    def assess_repair_impact(self, table_name: str, record_id: str, action: str) -> Dict[str, Any]:
+        """
+        Assesses the cascading impact of modifying or deleting a record in table_name.
+        Inspects child foreign key constraints to check if any child rows exist.
+        """
+        table_name = validate_identifier(table_name)
+        conn = get_connection()
+        dependent_records: List[Dict[str, Any]] = []
+
+        try:
+            with conn.cursor() as cur:
+                # Find all child tables and columns referencing this table
+                cur.execute("""
+                    SELECT 
+                        TABLE_NAME AS child_table,
+                        COLUMN_NAME AS child_column,
+                        CONSTRAINT_NAME AS fk_name
+                    FROM information_schema.KEY_COLUMN_USAGE
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND REFERENCED_TABLE_NAME = %s
+                """, (table_name,))
+                fk_refs = cur.fetchall()
+
+                for ref in fk_refs:
+                    c_tbl = validate_identifier(ref["child_table"])
+                    c_col = validate_identifier(ref["child_column"])
+                    
+                    cur.execute(f"SELECT COUNT(*) AS c FROM `{c_tbl}` WHERE `{c_col}` = %s", (record_id,))
+                    res = cur.fetchone()
+                    count = res["c"] if res else 0
+
+                    if count > 0:
+                        dependent_records.append({
+                            "child_table": c_tbl,
+                            "child_column": c_col,
+                            "matching_records_count": count,
+                            "constraint_name": ref["fk_name"]
+                        })
+
+            has_dependents = len(dependent_records) > 0
+            is_destructive = action in ["DELETE_RECORD", "QUARANTINE"]
+            
+            warning = None
+            if has_dependents and is_destructive:
+                warning = f"Deleting this record will violate foreign key constraints in {len(dependent_records)} child table(s) or require cascading actions."
+
+            return {
+                "table_name": table_name,
+                "record_id": record_id,
+                "action": action,
+                "has_dependent_records": has_dependents,
+                "dependent_tables": [r["child_table"] for r in dependent_records],
+                "dependent_records": dependent_records,
+                "risk_level": "CRITICAL" if (has_dependents and is_destructive) else ("MEDIUM" if is_destructive else "LOW"),
+                "is_safe_to_execute": not (has_dependents and is_destructive),
+                "warning": warning
+            }
+
+        finally:
+            conn.close()
