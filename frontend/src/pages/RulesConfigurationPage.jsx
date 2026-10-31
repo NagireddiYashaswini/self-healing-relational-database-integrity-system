@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Sliders,
   Plus,
@@ -10,7 +10,11 @@ import {
   AlertTriangle,
   RefreshCw,
   Trash2,
-  HelpCircle
+  Search,
+  Filter,
+  ShieldCheck,
+  Table,
+  Check
 } from 'lucide-react';
 import { rulesApi, databaseApi } from '../services/api';
 import { Button } from '../components/common/Button';
@@ -22,6 +26,12 @@ export const RulesConfigurationPage = () => {
   const [loading, setLoading] = useState(true);
   const [rules, setRules] = useState([]);
   const [availableTables, setAvailableTables] = useState([]);
+
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState('ALL');
+  const [filterSeverity, setFilterSeverity] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState('ALL');
 
   // Create Rule Modal
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -137,22 +147,44 @@ export const RulesConfigurationPage = () => {
     }
   };
 
+  // Filtered Rules
+  const filteredRules = useMemo(() => {
+    return rules.filter((r) => {
+      const matchesSearch =
+        !searchQuery ||
+        r.rule_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.target_table?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.target_column?.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesType = filterType === 'ALL' || r.rule_type === filterType;
+      const matchesSeverity = filterSeverity === 'ALL' || r.severity === filterSeverity;
+      const matchesStatus =
+        filterStatus === 'ALL' ||
+        (filterStatus === 'ENABLED' && r.is_enabled) ||
+        (filterStatus === 'DISABLED' && !r.is_enabled);
+
+      return matchesSearch && matchesType && matchesSeverity && matchesStatus;
+    });
+  }, [rules, searchQuery, filterType, filterSeverity, filterStatus]);
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+    <div className="space-y-5 max-w-[1600px] mx-auto">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
         <div>
-          <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+          <h2 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <Sliders className="w-5 h-5 text-indigo-600" />
             Integrity Rules Configuration
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Configure, validate, and test active constraints for orphans, duplicate column sets, NULL enforcement, and domains.
+          <p className="text-xs text-slate-500 mt-0.5">
+            Configure, validate, and dry-run active constraints for orphans, duplicate column sets, NULL enforcement, and domains.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             icon={RefreshCw}
             onClick={fetchRulesAndTables}
@@ -170,58 +202,133 @@ export const RulesConfigurationPage = () => {
         </div>
       </div>
 
+      {/* Filter / Search Bar */}
+      <div className="panel p-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by code, table, or column..."
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+
+          {/* Rule Type Filter */}
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="ALL">All Rule Types</option>
+            <option value="ORPHAN">Orphan Check</option>
+            <option value="DUPLICATE">Duplicate Check</option>
+            <option value="NULL_CHECK">Null Check</option>
+            <option value="DOMAIN_CHECK">Domain Check</option>
+          </select>
+
+          {/* Severity Filter */}
+          <select
+            value={filterSeverity}
+            onChange={(e) => setFilterSeverity(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="ALL">All Severities</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+          </select>
+
+          {/* Status Filter */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="ENABLED">Enabled Only</option>
+            <option value="DISABLED">Disabled Only</option>
+          </select>
+        </div>
+
+        <div className="text-xs text-slate-500 font-mono">
+          Showing <span className="font-semibold text-slate-900">{filteredRules.length}</span> of {rules.length} rules
+        </div>
+      </div>
+
       {/* Rules Grid */}
       {loading ? (
         <LoadingSpinner label="Loading integrity rules..." />
-      ) : rules.length > 0 ? (
+      ) : filteredRules.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {rules.map((rule) => (
+          {filteredRules.map((rule) => (
             <div
               key={rule.rule_id}
-              className={`p-5 rounded-2xl border glass-panel transition-all flex flex-col justify-between ${
-                rule.is_enabled ? 'border-slate-800 hover:border-emerald-500/40' : 'border-slate-900 opacity-60'
+              className={`panel p-4 flex flex-col justify-between transition-colors min-w-0 h-full ${
+                rule.is_enabled
+                  ? 'border-slate-200 hover:border-slate-300'
+                  : 'border-slate-200/60 bg-slate-50/50 opacity-70'
               }`}
             >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase">
+              <div className="min-w-0 flex-1 flex flex-col">
+                {/* Header: Rule Code & Severity Badge (Strictly safe grid) */}
+                <div className="grid grid-cols-[1fr_auto] items-start gap-2.5 mb-2 min-w-0">
+                  <span
+                    className="text-xs font-mono font-semibold text-indigo-700 uppercase tracking-tight break-all min-w-0 leading-tight"
+                    title={rule.rule_code}
+                  >
                     {rule.rule_code}
                   </span>
-                  <Badge variant={rule.severity} />
+                  <Badge variant={rule.severity} className="flex-shrink-0 self-start" />
                 </div>
 
-                <h3 className="text-sm font-bold text-white line-clamp-1">{rule.name}</h3>
-                <p className="mt-1 text-xs text-slate-400 leading-relaxed line-clamp-2">{rule.description}</p>
+                <h3 className="text-sm font-semibold text-slate-900 line-clamp-1" title={rule.name}>
+                  {rule.name}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500 leading-relaxed line-clamp-2">
+                  {rule.description}
+                </p>
 
-                {/* Target Column Pill */}
-                <div className="mt-3 p-2 rounded-lg bg-slate-900/80 border border-slate-800 font-mono text-[11px] text-slate-300 flex items-center justify-between">
-                  <span>
+                {/* Target Column Monospace Pill */}
+                <div className="mt-3 p-2 rounded bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 flex items-center justify-between gap-2 min-w-0">
+                  <span
+                    className="truncate min-w-0 text-slate-900 font-medium"
+                    title={`\`${rule.target_table}\`.\`${rule.target_column}\``}
+                  >
                     `{rule.target_table}`.{rule.target_column}
                   </span>
-                  <span className="text-slate-500 uppercase text-[9px]">{rule.rule_type}</span>
+                  <span className="text-slate-500 uppercase text-[10px] font-semibold bg-white px-1.5 py-0.5 rounded border border-slate-200 flex-shrink-0">
+                    {rule.rule_type}
+                  </span>
                 </div>
 
                 {rule.parent_table && (
-                  <div className="mt-1 text-[11px] font-mono text-slate-400 pl-1">
+                  <div
+                    className="mt-1.5 text-[11px] font-mono text-slate-500 pl-1 truncate"
+                    title={`Parent: \`${rule.parent_table}\`.\`${rule.parent_column}\``}
+                  >
                     ↳ Parent: `{rule.parent_table}`.{rule.parent_column}
                   </div>
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+              {/* Action Footer */}
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                 <button
                   onClick={() => handleToggleRule(rule)}
-                  className="flex items-center gap-1 text-xs font-semibold text-slate-300 hover:text-white"
+                  className="flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer select-none"
                 >
                   {rule.is_enabled ? (
                     <>
-                      <ToggleRight className="w-5 h-5 text-emerald-400" />
-                      <span className="text-emerald-400">Enabled</span>
+                      <ToggleRight className="w-5 h-5 text-indigo-600" />
+                      <span className="text-indigo-700 font-semibold">Enabled</span>
                     </>
                   ) : (
                     <>
-                      <ToggleLeft className="w-5 h-5 text-slate-600" />
+                      <ToggleLeft className="w-5 h-5 text-slate-400" />
                       <span className="text-slate-500">Disabled</span>
                     </>
                   )}
@@ -229,12 +336,11 @@ export const RulesConfigurationPage = () => {
 
                 <div className="flex items-center gap-1.5">
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     icon={Play}
                     loading={testingRuleId === rule.rule_id}
                     onClick={() => handleTestRule(rule.rule_id)}
-                    className="text-xs"
                     title="Dry-run Test Rule Against Current Data"
                   >
                     Test
@@ -244,7 +350,7 @@ export const RulesConfigurationPage = () => {
                     size="sm"
                     icon={Trash2}
                     onClick={() => handleDeleteRule(rule.rule_id)}
-                    className="text-slate-500 hover:text-rose-400"
+                    className="text-slate-400 hover:text-rose-600"
                     title="Delete Rule"
                   />
                 </div>
@@ -253,8 +359,10 @@ export const RulesConfigurationPage = () => {
           ))}
         </div>
       ) : (
-        <div className="glass-panel p-12 text-center rounded-2xl border border-slate-800 text-slate-400 text-sm">
-          No integrity rules configured. Click "Add New Rule" to create one.
+        <div className="panel p-12 text-center text-slate-500 text-xs">
+          {searchQuery || filterType !== 'ALL' || filterSeverity !== 'ALL' || filterStatus !== 'ALL'
+            ? 'No integrity rules match your search or filter criteria.'
+            : 'No integrity rules configured. Click "Add New Rule" to create one.'}
         </div>
       )}
 
@@ -268,18 +376,20 @@ export const RulesConfigurationPage = () => {
       >
         {testResult && (
           <div className="space-y-4">
-            <div className={`p-4 rounded-xl border flex items-center justify-between ${
-              testResult.violations_detected_count > 0
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-            }`}>
-              <div className="flex items-center gap-2">
+            <div
+              className={`p-3.5 rounded-md border flex items-center justify-between ${
+                testResult.violations_detected_count > 0
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
                 {testResult.violations_detected_count > 0 ? (
-                  <AlertTriangle className="w-5 h-5 text-amber-400" />
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
                 ) : (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                 )}
-                <span className="text-sm font-bold">
+                <span className="text-xs font-semibold">
                   {testResult.violations_detected_count} Anomaly Match(es) Found
                 </span>
               </div>
@@ -289,21 +399,24 @@ export const RulesConfigurationPage = () => {
             </div>
 
             {testResult.violations && testResult.violations.length > 0 && (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block font-mono">
                   Sample Matched Records:
                 </span>
                 {testResult.violations.map((v, idx) => (
-                  <div key={idx} className="p-2 rounded bg-slate-900 border border-slate-800 text-xs font-mono">
-                    <span className="text-emerald-400">ID {v.record_id}:</span> {v.description}
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded bg-slate-50 border border-slate-200 text-xs font-mono"
+                  >
+                    <span className="text-indigo-700 font-semibold">ID {v.record_id}:</span> {v.description}
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="flex justify-end pt-2 border-t border-slate-800">
+            <div className="flex justify-end pt-3 border-t border-slate-100">
               <Button variant="primary" size="sm" onClick={() => setTestResult(null)}>
-                Got it
+                Close
               </Button>
             </div>
           </div>
@@ -318,36 +431,36 @@ export const RulesConfigurationPage = () => {
         subtitle="Registers a parameterized integrity check executed during scans"
         maxWidth="max-w-lg"
       >
-        <div className="space-y-3 text-xs">
+        <div className="space-y-3.5 text-xs">
           <div>
-            <label className="font-bold text-slate-300 block mb-1">Rule Code (Unique ID):</label>
+            <label className="font-semibold text-slate-700 block mb-1">Rule Code (Unique ID):</label>
             <input
               type="text"
               value={ruleCode}
               onChange={(e) => setRuleCode(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
               placeholder="e.g. RULE_DOMAIN_STUDENT_SCORE"
-              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-100 font-mono"
+              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-slate-900 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
 
           <div>
-            <label className="font-bold text-slate-300 block mb-1">Rule Name:</label>
+            <label className="font-semibold text-slate-700 block mb-1">Rule Name:</label>
             <input
               type="text"
               value={ruleName}
               onChange={(e) => setRuleName(e.target.value)}
               placeholder="e.g. Student Exam Score Range"
-              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-100"
+              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="font-bold text-slate-300 block mb-1">Rule Category:</label>
+              <label className="font-semibold text-slate-700 block mb-1">Rule Category:</label>
               <select
                 value={ruleType}
                 onChange={(e) => setRuleType(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-100"
+                className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
                 <option value="ORPHAN">Orphan Foreign Key</option>
                 <option value="DUPLICATE">Duplicate Uniqueness</option>
@@ -357,11 +470,11 @@ export const RulesConfigurationPage = () => {
             </div>
 
             <div>
-              <label className="font-bold text-slate-300 block mb-1">Severity Level:</label>
+              <label className="font-semibold text-slate-700 block mb-1">Severity Level:</label>
               <select
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-100"
+                className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
                 <option value="CRITICAL">Critical</option>
                 <option value="HIGH">High</option>
@@ -373,67 +486,69 @@ export const RulesConfigurationPage = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="font-bold text-slate-300 block mb-1">Target Table:</label>
+              <label className="font-semibold text-slate-700 block mb-1">Target Table:</label>
               <select
                 value={targetTable}
                 onChange={(e) => setTargetTable(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-100 font-mono"
+                className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-slate-700 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
                 {availableTables.map((t) => (
-                  <option key={t.table_name} value={t.table_name}>{t.table_name}</option>
+                  <option key={t.table_name} value={t.table_name}>
+                    {t.table_name}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="font-bold text-slate-300 block mb-1">Target Column(s):</label>
+              <label className="font-semibold text-slate-700 block mb-1">Target Column(s):</label>
               <input
                 type="text"
                 value={targetColumn}
                 onChange={(e) => setTargetColumn(e.target.value)}
                 placeholder="e.g. grade_marks or student_id,course_id"
-                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded text-slate-100 font-mono"
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-slate-900 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
           </div>
 
           {ruleType === 'ORPHAN' && (
-            <div className="grid grid-cols-2 gap-3 p-2.5 rounded bg-slate-900 border border-slate-800">
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-md bg-slate-50 border border-slate-200">
               <div>
-                <label className="font-bold text-slate-300 block mb-1">Parent Table:</label>
+                <label className="font-semibold text-slate-700 block mb-1">Parent Table:</label>
                 <input
                   type="text"
                   value={parentTable}
                   onChange={(e) => setParentTable(e.target.value)}
                   placeholder="e.g. students"
-                  className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-100 font-mono"
+                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-slate-900 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
               <div>
-                <label className="font-bold text-slate-300 block mb-1">Parent Column:</label>
+                <label className="font-semibold text-slate-700 block mb-1">Parent Column:</label>
                 <input
                   type="text"
                   value={parentColumn}
                   onChange={(e) => setParentColumn(e.target.value)}
                   placeholder="e.g. student_id"
-                  className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-100 font-mono"
+                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-md text-slate-900 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
             </div>
           )}
 
           <div>
-            <label className="font-bold text-slate-300 block mb-1">Rule Parameters (JSON):</label>
+            <label className="font-semibold text-slate-700 block mb-1">Rule Parameters (JSON):</label>
             <textarea
               value={parametersJson}
               onChange={(e) => setParametersJson(e.target.value)}
               rows={3}
-              className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded text-slate-100 font-mono text-[11px]"
+              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-md text-slate-900 font-mono text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-            <Button variant="outline" size="sm" onClick={() => setCreateModalOpen(false)}>
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button variant="secondary" size="sm" onClick={() => setCreateModalOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" size="sm" loading={creating} onClick={handleCreateRule}>

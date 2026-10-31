@@ -2,9 +2,10 @@
 -- Self-Healing Relational Database Integrity System
 -- Script 03: Baseline Clean Sample Data Insertion
 -- All data inserted here satisfies 100% referential integrity and constraints.
+-- Database: self_healing_test_db
 -- =============================================================================
 
-USE `self_healing_db`;
+USE `self_healing_test_db`;
 
 -- 1. Departments
 INSERT INTO `departments` (`dept_id`, `dept_code`, `dept_name`, `building`, `budget`)

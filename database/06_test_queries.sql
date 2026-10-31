@@ -2,9 +2,10 @@
 -- Self-Healing Relational Database Integrity System
 -- Script 06: Test & Inspection Queries
 -- Verifies manual SQL equivalents of the automated Integrity Scanner engine.
+-- Database: self_healing_test_db
 -- =============================================================================
 
-USE `self_healing_db`;
+USE `self_healing_test_db`;
 
 -- 1. Detect Orphan Records in staging_enrollments referencing missing students
 SELECT 
@@ -37,7 +38,16 @@ FROM `staging_enrollments`
 GROUP BY student_id, course_id
 HAVING COUNT(*) > 1;
 
--- 4. Detect Domain Range Violations (Marks > 100 or < 0)
+-- 4. Detect Duplicate Student Email Addresses
+SELECT 
+    email,
+    COUNT(*) AS occurrence_count,
+    GROUP_CONCAT(student_id) AS student_ids
+FROM `students`
+GROUP BY email
+HAVING COUNT(*) > 1;
+
+-- 5. Detect Domain Range Violations (Marks > 100 or < 0)
 SELECT 
     staging_id, 
     student_id, 
@@ -47,7 +57,7 @@ SELECT
 FROM `staging_enrollments`
 WHERE grade_marks < 0.00 OR grade_marks > 100.00;
 
--- 5. Detect Invalid Status Enums
+-- 6. Detect Invalid Status Enums
 SELECT 
     staging_id, 
     status,
@@ -55,7 +65,7 @@ SELECT
 FROM `staging_enrollments`
 WHERE status NOT IN ('ENROLLED', 'COMPLETED', 'DROPPED');
 
--- 6. Detect Student Age Domain Violations (Age < 16 or Age > 65)
+-- 7. Detect Student Age Domain Violations (Age < 16 or Age > 65)
 SELECT 
     student_id, 
     student_name, 
@@ -64,7 +74,7 @@ SELECT
 FROM `students`
 WHERE age < 16 OR age > 65;
 
--- 7. Detect Missing / Empty Student Names
+-- 8. Detect Missing / Empty Student Names
 SELECT 
     student_id, 
     email, 
@@ -73,7 +83,7 @@ SELECT
 FROM `students`
 WHERE student_name IS NULL OR TRIM(student_name) = '';
 
--- 8. Verify System Status Overview
+-- 9. Verify System Status Overview
 SELECT 'Departments' AS entity, COUNT(*) AS count FROM `departments`
 UNION ALL
 SELECT 'Instructors', COUNT(*) FROM `instructors`

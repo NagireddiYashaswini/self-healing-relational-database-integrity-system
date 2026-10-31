@@ -13,8 +13,8 @@ class TransactionManager:
     def run_demonstration(scenario: str = "SIMULATED_FAILURE_ROLLBACK") -> Dict[str, Any]:
         """
         Executes a controlled interactive demonstration of MySQL InnoDB transaction behavior:
-        1. COMMIT_SUCCESS: Begins transaction, inserts a staging record, verifies intermediate state, commits, checks final state.
-        2. SIMULATED_FAILURE_ROLLBACK: Begins transaction, inserts staging record, verifies intermediate dirty read, encounters simulated error, executes ROLLBACK, confirms record was entirely undone!
+        1. COMMIT_SUCCESS: Begins transaction, inserts a record, verifies intermediate state, commits, checks final state.
+        2. SIMULATED_FAILURE_ROLLBACK: Begins transaction, inserts record, verifies intermediate dirty read, encounters simulated error, executes ROLLBACK, confirms record was entirely undone!
         3. SAVEPOINT_PARTIAL_ROLLBACK: Begins transaction, inserts record A, sets SAVEPOINT sp1, inserts invalid record B, encounters error, executes ROLLBACK TO SAVEPOINT sp1, commits record A!
         """
         transaction_id = f"TX-DEMO-{uuid.uuid4().hex[:8].upper()}"
@@ -23,12 +23,20 @@ class TransactionManager:
         steps: List[Dict[str, Any]] = []
 
         conn = get_connection()
-        test_external_ref = f"DEMO-{uuid.uuid4().hex[:6].upper()}"
+        test_uid = uuid.uuid4().hex[:6].upper()
 
         try:
+            with conn.cursor() as cur:
+                cur.execute("SHOW TABLES;")
+                all_tables = [list(r.values())[0].lower() for r in cur.fetchall()]
+
+            # Determine available demo table
+            is_retail = "customers" in all_tables
+            demo_table = "customers" if is_retail else ("staging_enrollments" if "staging_enrollments" in all_tables else all_tables[0])
+
             # Baseline Count Check
             with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) AS c FROM `staging_enrollments`")
+                cur.execute(f"SELECT COUNT(*) AS c FROM `{demo_table}`")
                 initial_count = cur.fetchone()["c"]
 
             # Step 1: BEGIN TRANSACTION
@@ -37,28 +45,36 @@ class TransactionManager:
                 "operation_name": "BEGIN TRANSACTION",
                 "sql": "START TRANSACTION /* Autocommit disabled */",
                 "status": "EXECUTED",
-                "details": "Initiated atomic InnoDB transaction isolation block.",
-                "database_state_snapshot": {"staging_rows": initial_count}
+                "details": f"Initiated atomic InnoDB transaction isolation block on `{demo_table}`.",
+                "database_state_snapshot": {f"{demo_table}_rows": initial_count}
             })
 
             if scenario == "COMMIT_SUCCESS":
                 # Step 2: Valid Insert Operation
                 with conn.cursor() as cur:
-                    insert_sql = """
-                        INSERT INTO staging_enrollments 
-                            (external_ref, student_id, course_id, student_email, enrolled_on, grade_marks, status, notes)
-                        VALUES (%s, 101, 1, 'ravi.kumar@univ.edu', '2026-10-01', 95.00, 'ENROLLED', 'Transaction commit demo')
-                    """
-                    cur.execute(insert_sql, (test_external_ref,))
+                    if is_retail:
+                        test_email = f"tx_commit_{test_uid.lower()}@example.com"
+                        insert_sql = """
+                            INSERT INTO customers (customer_name, email, phone, city)
+                            VALUES (%s, %s, %s, %s)
+                        """
+                        cur.execute(insert_sql, (f"Commit Demo Customer {test_uid}", test_email, "+1-555-0199", "Tech City"))
+                    else:
+                        insert_sql = """
+                            INSERT INTO staging_enrollments 
+                                (external_ref, student_id, course_id, student_email, enrolled_on, grade_marks, status, notes)
+                            VALUES (%s, 101, 1, 'demo@univ.edu', '2026-10-01', 95.00, 'ENROLLED', 'Transaction commit demo')
+                        """
+                        cur.execute(insert_sql, (f"DEMO-{test_uid}",))
                     inserted_id = cur.lastrowid
 
                 steps.append({
                     "step_number": 2,
                     "operation_name": "INSERT_RECORD",
-                    "sql": f"INSERT INTO staging_enrollments VALUES (id={inserted_id}, ref='{test_external_ref}')",
+                    "sql": f"INSERT INTO {demo_table} (id={inserted_id}) VALUES (...)",
                     "status": "EXECUTED",
-                    "details": "Staging enrollment inserted within transaction scope.",
-                    "database_state_snapshot": {"staging_rows": initial_count + 1, "inserted_id": inserted_id}
+                    "details": f"Record inserted into `{demo_table}` within transaction scope.",
+                    "database_state_snapshot": {f"{demo_table}_rows": initial_count + 1, "inserted_id": inserted_id}
                 })
 
                 # Step 3: COMMIT
@@ -69,11 +85,11 @@ class TransactionManager:
                     "sql": "COMMIT;",
                     "status": "COMMITTED",
                     "details": "Changes persisted permanently to InnoDB redo logs and tablespace.",
-                    "database_state_snapshot": {"staging_rows": initial_count + 1}
+                    "database_state_snapshot": {f"{demo_table}_rows": initial_count + 1}
                 })
 
                 with conn.cursor() as cur:
-                    cur.execute("SELECT COUNT(*) AS c FROM `staging_enrollments`")
+                    cur.execute(f"SELECT COUNT(*) AS c FROM `{demo_table}`")
                     final_count = cur.fetchone()["c"]
 
                 duration_ms = round((time.time() - t0) * 1000, 2)
@@ -88,7 +104,7 @@ class TransactionManager:
 
                 AuditService.log_event(
                     event_type="TRANSACTION_DEMO_COMMIT",
-                    action_description=f"Transaction simulation '{scenario}' completed with COMMIT.",
+                    action_description=f"Transaction simulation '{scenario}' completed with COMMIT on `{demo_table}`.",
                     actor="SIMULATOR",
                     related_transaction_id=transaction_id,
                     result="SUCCESS"
@@ -105,27 +121,35 @@ class TransactionManager:
                     "initial_state_count": initial_count,
                     "final_state_count": final_count,
                     "state_preserved": final_count == initial_count + 1,
-                    "explanation": "Transaction successfully committed. The inserted row was durably written to the database."
+                    "explanation": f"Transaction successfully committed to `{demo_table}`. The inserted row was durably written to the database."
                 }
 
             elif scenario == "SIMULATED_FAILURE_ROLLBACK":
                 # Step 2: Valid Insert Operation
                 with conn.cursor() as cur:
-                    insert_sql = """
-                        INSERT INTO staging_enrollments 
-                            (external_ref, student_id, course_id, student_email, enrolled_on, grade_marks, status, notes)
-                        VALUES (%s, 102, 2, 'priya.sharma@univ.edu', '2026-10-01', 92.00, 'ENROLLED', 'Temp row pending failure')
-                    """
-                    cur.execute(insert_sql, (test_external_ref,))
+                    if is_retail:
+                        test_email = f"tx_rollback_{test_uid.lower()}@example.com"
+                        insert_sql = """
+                            INSERT INTO customers (customer_name, email, phone, city)
+                            VALUES (%s, %s, %s, %s)
+                        """
+                        cur.execute(insert_sql, (f"Temp Customer {test_uid}", test_email, "+1-555-0100", "Temp City"))
+                    else:
+                        insert_sql = """
+                            INSERT INTO staging_enrollments 
+                                (external_ref, student_id, course_id, student_email, enrolled_on, grade_marks, status, notes)
+                            VALUES (%s, 102, 2, 'temp@univ.edu', '2026-10-01', 92.00, 'ENROLLED', 'Temp row pending failure')
+                        """
+                        cur.execute(insert_sql, (f"DEMO-{test_uid}",))
                     temp_id = cur.lastrowid
 
                 steps.append({
                     "step_number": 2,
                     "operation_name": "INSERT_RECORD_STEP1",
-                    "sql": f"INSERT INTO staging_enrollments VALUES (id={temp_id}, ref='{test_external_ref}')",
+                    "sql": f"INSERT INTO {demo_table} (id={temp_id}) VALUES (...)",
                     "status": "EXECUTED",
                     "details": f"Temporary record #{temp_id} created in uncommitted transaction buffer.",
-                    "database_state_snapshot": {"staging_rows_uncommitted": initial_count + 1}
+                    "database_state_snapshot": {f"{demo_table}_rows_uncommitted": initial_count + 1}
                 })
 
                 # Step 3: Trigger Simulated Failure (Intentional integrity error / condition)
@@ -147,12 +171,12 @@ class TransactionManager:
                     "sql": "ROLLBACK;",
                     "status": "ROLLED_BACK",
                     "details": "Rollback invoked. All changes discarded via InnoDB undo logs.",
-                    "database_state_snapshot": {"staging_rows": initial_count}
+                    "database_state_snapshot": {f"{demo_table}_rows": initial_count}
                 })
 
                 # Step 5: Verification check
                 with conn.cursor() as cur:
-                    cur.execute("SELECT COUNT(*) AS c FROM `staging_enrollments`")
+                    cur.execute(f"SELECT COUNT(*) AS c FROM `{demo_table}`")
                     final_count = cur.fetchone()["c"]
 
                 duration_ms = round((time.time() - t0) * 1000, 2)
@@ -168,7 +192,7 @@ class TransactionManager:
 
                 AuditService.log_event(
                     event_type="TRANSACTION_DEMO_ROLLBACK",
-                    action_description=f"Transaction simulation '{scenario}' rolled back successfully. Database returned to initial clean state.",
+                    action_description=f"Transaction simulation '{scenario}' rolled back successfully on `{demo_table}`. Database returned to initial clean state.",
                     actor="SIMULATOR",
                     related_transaction_id=transaction_id,
                     result="SUCCESS"
@@ -185,72 +209,89 @@ class TransactionManager:
                     "initial_state_count": initial_count,
                     "final_state_count": final_count,
                     "state_preserved": final_count == initial_count,
-                    "explanation": f"Atomicity demonstrated! Temporary row was completely discarded. Database preserved at initial {initial_count} rows."
+                    "explanation": f"Atomicity demonstrated! Temporary row in `{demo_table}` was completely discarded. Database preserved at initial {initial_count} rows."
                 }
 
             elif scenario == "SAVEPOINT_PARTIAL_ROLLBACK":
                 # Step 2: Insert First Record (Valid)
                 with conn.cursor() as cur:
-                    insert_sql1 = """
-                        INSERT INTO staging_enrollments 
-                            (external_ref, student_id, course_id, student_email, enrolled_on, grade_marks, status, notes)
-                        VALUES (%s, 103, 3, 'arun.patel@univ.edu', '2026-10-01', 88.00, 'ENROLLED', 'Savepoint part 1')
-                    """
-                    cur.execute(insert_sql1, (f"{test_external_ref}-A",))
+                    if is_retail:
+                        test_email_a = f"tx_savepoint_a_{test_uid.lower()}@example.com"
+                        insert_sql1 = """
+                            INSERT INTO customers (customer_name, email, phone, city)
+                            VALUES (%s, %s, %s, %s)
+                        """
+                        cur.execute(insert_sql1, (f"Savepoint Customer A {test_uid}", test_email_a, "+1-555-0101", "City A"))
+                    else:
+                        insert_sql1 = """
+                            INSERT INTO staging_enrollments 
+                                (external_ref, student_id, course_id, student_email, enrolled_on, grade_marks, status, notes)
+                            VALUES (%s, 103, 3, 'arun.patel@univ.edu', '2026-10-01', 88.00, 'ENROLLED', 'Savepoint part 1')
+                        """
+                        cur.execute(insert_sql1, (f"DEMO-{test_uid}-A",))
                     rec1_id = cur.lastrowid
 
                 steps.append({
                     "step_number": 2,
                     "operation_name": "INSERT_RECORD_A",
-                    "sql": f"INSERT INTO staging_enrollments VALUES (id={rec1_id}, ref='{test_external_ref}-A')",
+                    "sql": f"INSERT INTO {demo_table} (id={rec1_id}) VALUES (...)",
                     "status": "EXECUTED",
-                    "details": "First valid operation executed.",
-                    "database_state_snapshot": {"staging_rows": initial_count + 1}
+                    "details": f"First valid operation executed on `{demo_table}`.",
+                    "database_state_snapshot": {f"{demo_table}_rows": initial_count + 1}
                 })
 
                 # Step 3: Establish SAVEPOINT
+                sp_name = "sp_demo_part1"
                 with conn.cursor() as cur:
-                    cur.execute("SAVEPOINT sp_enrollment_part1;")
+                    cur.execute(f"SAVEPOINT {sp_name};")
 
                 steps.append({
                     "step_number": 3,
                     "operation_name": "SET_SAVEPOINT",
-                    "sql": "SAVEPOINT sp_enrollment_part1;",
+                    "sql": f"SAVEPOINT {sp_name};",
                     "status": "SAVEPOINT_SET",
-                    "details": "Savepoint 'sp_enrollment_part1' established within active transaction.",
-                    "database_state_snapshot": {"savepoint": "sp_enrollment_part1"}
+                    "details": f"Savepoint '{sp_name}' established within active transaction.",
+                    "database_state_snapshot": {"savepoint": sp_name}
                 })
 
                 # Step 4: Insert Second Record (Will be rolled back)
                 with conn.cursor() as cur:
-                    insert_sql2 = """
-                        INSERT INTO staging_enrollments 
-                            (external_ref, student_id, course_id, student_email, enrolled_on, grade_marks, status, notes)
-                        VALUES (%s, 999, 888, 'bad.ref@univ.edu', '2026-10-01', 50.00, 'ENROLLED', 'Savepoint part 2 (bad)')
-                    """
-                    cur.execute(insert_sql2, (f"{test_external_ref}-B",))
+                    if is_retail:
+                        test_email_b = f"tx_savepoint_b_{test_uid.lower()}@example.com"
+                        insert_sql2 = """
+                            INSERT INTO customers (customer_name, email, phone, city)
+                            VALUES (%s, %s, %s, %s)
+                        """
+                        cur.execute(insert_sql2, (f"Savepoint Customer B {test_uid}", test_email_b, "+1-555-0102", "City B"))
+                    else:
+                        insert_sql2 = """
+                            INSERT INTO staging_enrollments 
+                                (external_ref, student_id, course_id, student_email, enrolled_on, grade_marks, status, notes)
+                            VALUES (%s, 999, 888, 'bad.ref@univ.edu', '2026-10-01', 50.00, 'ENROLLED', 'Savepoint part 2 (bad)')
+                        """
+                        cur.execute(insert_sql2, (f"DEMO-{test_uid}-B",))
                     rec2_id = cur.lastrowid
 
                 steps.append({
                     "step_number": 4,
                     "operation_name": "INSERT_RECORD_B",
-                    "sql": f"INSERT INTO staging_enrollments VALUES (id={rec2_id}, ref='{test_external_ref}-B')",
+                    "sql": f"INSERT INTO {demo_table} (id={rec2_id}) VALUES (...)",
                     "status": "EXECUTED",
-                    "details": "Second operation executed (contains invalid foreign keys).",
-                    "database_state_snapshot": {"staging_rows": initial_count + 2}
+                    "details": f"Second operation executed on `{demo_table}` (to be undone via savepoint).",
+                    "database_state_snapshot": {f"{demo_table}_rows": initial_count + 2}
                 })
 
                 # Step 5: Rollback to Savepoint
                 with conn.cursor() as cur:
-                    cur.execute("ROLLBACK TO SAVEPOINT sp_enrollment_part1;")
+                    cur.execute(f"ROLLBACK TO SAVEPOINT {sp_name};")
 
                 steps.append({
                     "step_number": 5,
                     "operation_name": "ROLLBACK_TO_SAVEPOINT",
-                    "sql": "ROLLBACK TO SAVEPOINT sp_enrollment_part1;",
+                    "sql": f"ROLLBACK TO SAVEPOINT {sp_name};",
                     "status": "ROLLED_BACK",
-                    "details": "Rolled back invalid Record B while retaining Record A in transaction buffer.",
-                    "database_state_snapshot": {"staging_rows": initial_count + 1}
+                    "details": f"Rolled back Record B while retaining Record A in transaction buffer.",
+                    "database_state_snapshot": {f"{demo_table}_rows": initial_count + 1}
                 })
 
                 # Step 6: Commit Retained Changes
@@ -260,12 +301,12 @@ class TransactionManager:
                     "operation_name": "COMMIT",
                     "sql": "COMMIT;",
                     "status": "COMMITTED",
-                    "details": "Committed transaction containing only Record A.",
-                    "database_state_snapshot": {"staging_rows": initial_count + 1}
+                    "details": f"Committed transaction containing only Record A to `{demo_table}`.",
+                    "database_state_snapshot": {f"{demo_table}_rows": initial_count + 1}
                 })
 
                 with conn.cursor() as cur:
-                    cur.execute("SELECT COUNT(*) AS c FROM `staging_enrollments`")
+                    cur.execute(f"SELECT COUNT(*) AS c FROM `{demo_table}`")
                     final_count = cur.fetchone()["c"]
 
                 duration_ms = round((time.time() - t0) * 1000, 2)
@@ -281,7 +322,7 @@ class TransactionManager:
 
                 AuditService.log_event(
                     event_type="TRANSACTION_DEMO_SAVEPOINT",
-                    action_description=f"Transaction savepoint simulation executed. Record B undone, Record A committed.",
+                    action_description=f"Transaction savepoint simulation executed on `{demo_table}`. Record B undone, Record A committed.",
                     actor="SIMULATOR",
                     related_transaction_id=transaction_id,
                     result="SUCCESS"
@@ -298,7 +339,7 @@ class TransactionManager:
                     "initial_state_count": initial_count,
                     "final_state_count": final_count,
                     "state_preserved": final_count == initial_count + 1,
-                    "explanation": f"Savepoint demonstrated! Record B was rolled back to savepoint, whereas Record A was durably committed."
+                    "explanation": f"Savepoint demonstrated on `{demo_table}`! Record B was rolled back to savepoint, whereas Record A was durably committed."
                 }
 
             else:

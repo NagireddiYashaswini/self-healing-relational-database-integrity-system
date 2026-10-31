@@ -1,27 +1,29 @@
 -- =============================================================================
 -- Self-Healing Relational Database Integrity System
 -- Script 02: Table Schema Definition
--- Engine: InnoDB
--- Includes: Academic Domain Schema, Staging & Quarantine Tables, System Engine Tables
+-- Engine: InnoDB (Full ACID & Foreign Key Enforcement)
+-- Database: self_healing_test_db
 -- =============================================================================
 
-USE `self_healing_db`;
+USE `self_healing_test_db`;
 
 -- -----------------------------------------------------------------------------
 -- 1. BUSINESS DOMAIN SCHEMA: Academic Management System
 -- -----------------------------------------------------------------------------
 
--- Departments Table
+-- 1. Departments Table
 CREATE TABLE IF NOT EXISTS `departments` (
     `dept_id` INT AUTO_INCREMENT PRIMARY KEY,
     `dept_code` VARCHAR(20) NOT NULL UNIQUE,
-    `dept_name` VARCHAR(100) NOT NULL,
-    `building` VARCHAR(100),
+    `dept_name` VARCHAR(100) NOT NULL UNIQUE,
+    `building` VARCHAR(100) NULL,
     `budget` DECIMAL(12, 2) NOT NULL DEFAULT 100000.00,
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT `chk_dept_budget` CHECK (`budget` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Instructors Table
+-- 2. Instructors Table
 CREATE TABLE IF NOT EXISTS `instructors` (
     `instructor_id` INT AUTO_INCREMENT PRIMARY KEY,
     `instructor_name` VARCHAR(100) NOT NULL,
@@ -29,22 +31,34 @@ CREATE TABLE IF NOT EXISTS `instructors` (
     `dept_id` INT NULL,
     `salary` DECIMAL(10, 2) NOT NULL DEFAULT 50000.00,
     `hire_date` DATE NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT `fk_instructors_dept` FOREIGN KEY (`dept_id`) 
         REFERENCES `departments`(`dept_id`) 
-        ON DELETE RESTRICT ON UPDATE CASCADE
+        ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT `chk_instructor_salary` CHECK (`salary` >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Courses Table
+-- 3. Courses Table
 CREATE TABLE IF NOT EXISTS `courses` (
     `course_id` INT AUTO_INCREMENT PRIMARY KEY,
-    `course_code` VARCHAR(20) NOT NULL,
+    `course_code` VARCHAR(20) NOT NULL UNIQUE,
     `course_name` VARCHAR(150) NOT NULL,
     `credits` INT NOT NULL DEFAULT 3,
     `dept_id` INT NULL,
-    `instructor_id` INT NULL
+    `instructor_id` INT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT `fk_courses_dept` FOREIGN KEY (`dept_id`) 
+        REFERENCES `departments`(`dept_id`) 
+        ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT `fk_courses_instructor` FOREIGN KEY (`instructor_id`) 
+        REFERENCES `instructors`(`instructor_id`) 
+        ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT `chk_course_credits` CHECK (`credits` > 0 AND `credits` <= 12)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Students Table
+-- 4. Students Table
 CREATE TABLE IF NOT EXISTS `students` (
     `student_id` INT AUTO_INCREMENT PRIMARY KEY,
     `student_name` VARCHAR(100) NOT NULL,
@@ -52,20 +66,39 @@ CREATE TABLE IF NOT EXISTS `students` (
     `age` INT NULL,
     `gpa` DECIMAL(3, 2) NULL,
     `dept_id` INT NULL,
-    `enrollment_year` INT NULL
+    `enrollment_year` INT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT `fk_students_dept` FOREIGN KEY (`dept_id`) 
+        REFERENCES `departments`(`dept_id`) 
+        ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Enrollments Table
+-- 5. Enrollments Table
 CREATE TABLE IF NOT EXISTS `enrollments` (
     `enrollment_id` INT AUTO_INCREMENT PRIMARY KEY,
     `student_id` INT NOT NULL,
     `course_id` INT NOT NULL,
     `enrolled_on` DATE NOT NULL,
     `grade_marks` DECIMAL(5, 2) NULL,
-    `status` ENUM('ENROLLED', 'COMPLETED', 'DROPPED') NOT NULL DEFAULT 'ENROLLED'
+    `status` ENUM('ENROLLED', 'COMPLETED', 'DROPPED') NOT NULL DEFAULT 'ENROLLED',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT `fk_enrollments_student` FOREIGN KEY (`student_id`) 
+        REFERENCES `students`(`student_id`) 
+        ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT `fk_enrollments_course` FOREIGN KEY (`course_id`) 
+        REFERENCES `courses`(`course_id`) 
+        ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT `uq_student_course` UNIQUE (`student_id`, `course_id`),
+    CONSTRAINT `chk_grade_marks` CHECK (`grade_marks` IS NULL OR (`grade_marks` >= 0.00 AND `grade_marks` <= 100.00))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Staging Enrollments Table (Unconstrained for staging/legacy data import demonstration)
+-- -----------------------------------------------------------------------------
+-- 2. STAGING & QUARANTINE SCHEMA
+-- -----------------------------------------------------------------------------
+
+-- Staging Enrollments Table (Unconstrained to allow staging ingestion testing & violation detection)
 CREATE TABLE IF NOT EXISTS `staging_enrollments` (
     `staging_id` INT AUTO_INCREMENT PRIMARY KEY,
     `external_ref` VARCHAR(50) NULL,
@@ -90,11 +123,12 @@ CREATE TABLE IF NOT EXISTS `quarantine_records` (
     `quarantined_by` VARCHAR(100) DEFAULT 'SYSTEM',
     `quarantined_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `resolved` BOOLEAN DEFAULT FALSE,
-    `resolution_notes` TEXT NULL
+    `resolution_notes` TEXT NULL,
+    INDEX `idx_quarantine_src` (`source_table`, `source_pk_value`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
--- 2. SYSTEM MANAGEMENT SCHEMA: Integrity, Scans, Repairs & Audits
+-- 3. SYSTEM ENGINE SCHEMA: Integrity Rules, Scans, Repairs & Audits
 -- -----------------------------------------------------------------------------
 
 -- Integrity Rules Configuration Table
@@ -255,6 +289,53 @@ INSERT INTO `database_metadata` (`meta_key`, `meta_value`)
 VALUES 
     ('system_name', 'Self-Healing Relational Database Integrity System'),
     ('version', '2.4.0'),
+    ('database_name', 'self_healing_test_db'),
     ('schema_revision', '2026.10'),
     ('initialized_at', NOW())
 ON DUPLICATE KEY UPDATE `meta_value` = VALUES(`meta_value`);
+
+-- -----------------------------------------------------------------------------
+-- 4. DATABASE-LEVEL AUDIT LOG IMMUTABILITY TRIGGERS
+-- Protects audit trail and transaction logs from unauthorized alteration/deletion
+-- -----------------------------------------------------------------------------
+
+DROP TRIGGER IF EXISTS `trg_audit_logs_no_update`;
+DROP TRIGGER IF EXISTS `trg_audit_logs_no_delete`;
+DROP TRIGGER IF EXISTS `trg_transaction_logs_no_update`;
+DROP TRIGGER IF EXISTS `trg_transaction_logs_no_delete`;
+
+DELIMITER $$
+
+CREATE TRIGGER `trg_audit_logs_no_update`
+BEFORE UPDATE ON `audit_logs`
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Security Policy Violation: Audit log records are immutable and cannot be modified.';
+END$$
+
+CREATE TRIGGER `trg_audit_logs_no_delete`
+BEFORE DELETE ON `audit_logs`
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Security Policy Violation: Audit log records are immutable and cannot be deleted.';
+END$$
+
+CREATE TRIGGER `trg_transaction_logs_no_update`
+BEFORE UPDATE ON `transaction_logs`
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Security Policy Violation: Transaction log records are immutable and cannot be modified.';
+END$$
+
+CREATE TRIGGER `trg_transaction_logs_no_delete`
+BEFORE DELETE ON `transaction_logs`
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Security Policy Violation: Transaction log records are immutable and cannot be deleted.';
+END$$
+
+DELIMITER ;

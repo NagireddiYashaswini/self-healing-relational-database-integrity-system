@@ -4,25 +4,30 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
-  darkMode: 'class',
   theme: {
     extend: {
       colors: {
         brand: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          500: '#10b981',
-          600: '#059669',
-          700: '#047857',
+          50: '#EEF2FF',
+          100: '#E0E7FF',
+          200: '#C7D2FE',
+          300: '#A5B4FC',
+          400: '#818CF8',
+          500: '#6366F1',
+          600: '#4F46E5',
+          700: '#4338CA',
+          800: '#3730A3',
+          900: '#312E81',
         },
-        slate: {
-          850: '#151f32',
-          925: '#0b1120',
-        }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace']
+      },
+      boxShadow: {
+        'xs': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        'card': '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04)',
+        'dropdown': '0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
       }
     },
   },

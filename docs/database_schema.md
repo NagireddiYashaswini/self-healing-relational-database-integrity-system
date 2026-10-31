@@ -1,7 +1,7 @@
 # Database Schema & Relational Model Specification
 
 ## 1. Relational Entity Summary
-The database `self_healing_db` utilizes the **MySQL InnoDB** storage engine for full ACID transaction compliance and declarative foreign key constraints.
+The database `self_healing_test_db` utilizes the **MySQL InnoDB** storage engine for full ACID transaction compliance and declarative foreign key constraints.
 
 ---
 
@@ -10,26 +10,31 @@ The database `self_healing_db` utilizes the **MySQL InnoDB** storage engine for 
 ### `departments`
 - `dept_id` INT AUTO_INCREMENT PRIMARY KEY
 - `dept_code` VARCHAR(20) NOT NULL UNIQUE
-- `dept_name` VARCHAR(100) NOT NULL
+- `dept_name` VARCHAR(100) NOT NULL UNIQUE
 - `building` VARCHAR(100)
-- `budget` DECIMAL(12, 2) NOT NULL DEFAULT 100000.00
+- `budget` DECIMAL(12, 2) NOT NULL DEFAULT 100000.00 (CHECK: `budget >= 0`)
 - `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+- `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
 ### `instructors`
 - `instructor_id` INT AUTO_INCREMENT PRIMARY KEY
 - `instructor_name` VARCHAR(100) NOT NULL
 - `email` VARCHAR(150) NOT NULL UNIQUE
-- `dept_id` INT NULL (FK -> `departments.dept_id` ON DELETE RESTRICT ON UPDATE CASCADE)
-- `salary` DECIMAL(10, 2) NOT NULL DEFAULT 50000.00
+- `dept_id` INT NULL (FK -> `departments.dept_id` ON DELETE SET NULL ON UPDATE CASCADE)
+- `salary` DECIMAL(10, 2) NOT NULL DEFAULT 50000.00 (CHECK: `salary >= 0`)
 - `hire_date` DATE NULL
+- `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+- `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
 ### `courses`
 - `course_id` INT AUTO_INCREMENT PRIMARY KEY
-- `course_code` VARCHAR(20) NOT NULL
+- `course_code` VARCHAR(20) NOT NULL UNIQUE
 - `course_name` VARCHAR(150) NOT NULL
-- `credits` INT NOT NULL DEFAULT 3
+- `credits` INT NOT NULL DEFAULT 3 (CHECK: `credits > 0 AND credits <= 12`)
 - `dept_id` INT NULL (FK -> `departments.dept_id` ON DELETE SET NULL ON UPDATE CASCADE)
 - `instructor_id` INT NULL (FK -> `instructors.instructor_id` ON DELETE SET NULL ON UPDATE CASCADE)
+- `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+- `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
 ### `students`
 - `student_id` INT AUTO_INCREMENT PRIMARY KEY
@@ -39,14 +44,18 @@ The database `self_healing_db` utilizes the **MySQL InnoDB** storage engine for 
 - `gpa` DECIMAL(3, 2) NULL
 - `dept_id` INT NULL (FK -> `departments.dept_id` ON DELETE SET NULL ON UPDATE CASCADE)
 - `enrollment_year` INT NULL
+- `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+- `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
 ### `enrollments`
 - `enrollment_id` INT AUTO_INCREMENT PRIMARY KEY
 - `student_id` INT NOT NULL (FK -> `students.student_id` ON DELETE RESTRICT ON UPDATE CASCADE)
 - `course_id` INT NOT NULL (FK -> `courses.course_id` ON DELETE RESTRICT ON UPDATE CASCADE)
 - `enrolled_on` DATE NOT NULL
-- `grade_marks` DECIMAL(5, 2) NULL
+- `grade_marks` DECIMAL(5, 2) NULL (CHECK: `grade_marks IS NULL OR (grade_marks >= 0.00 AND grade_marks <= 100.00)`)
 - `status` ENUM('ENROLLED', 'COMPLETED', 'DROPPED') NOT NULL DEFAULT 'ENROLLED'
+- `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+- `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 - UNIQUE KEY `uq_student_course` (`student_id`, `course_id`)
 
 ### `staging_enrollments`
@@ -86,7 +95,7 @@ The database `self_healing_db` utilizes the **MySQL InnoDB** storage engine for 
 | `integrity_issues` | Individual detected violations with status lifecycle (`OPEN` -> `REVIEWED` -> `APPROVED` -> `REPAIRED` / `IGNORED`). |
 | `repair_recommendations` | Healing recommendations linked to issues with risk level and approval flag. |
 | `repair_executions` | Atomic execution record with transaction ID, timing, and before/after states. |
-| `audit_logs` | Immutable audit trail with sensitive key redaction. |
-| `transaction_logs` | Low-level transaction lifecycle recording commits, rollbacks, and savepoints. |
+| `audit_logs` | Immutable audit trail with sensitive key redaction. Enforced by `BEFORE UPDATE` and `BEFORE DELETE` triggers. |
+| `transaction_logs` | Low-level transaction lifecycle recording commits, rollbacks, and savepoints. Enforced by immutability triggers. |
 | `recovery_checkpoints` | Application-level table snapshots capturing schema DDL and row states. |
 | `database_metadata` | Key-value store tracking system initialized state, version, and schema revisions. |

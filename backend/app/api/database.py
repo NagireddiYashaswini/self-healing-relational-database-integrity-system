@@ -114,6 +114,127 @@ def list_tables():
     finally:
         conn.close()
 
+def _get_single_table_detail(cur, table_name: str) -> TableDetail:
+    """Helper to inspect and compile complete schema metadata for a single table."""
+    cur.execute("""
+        SELECT COUNT(*) as c FROM information_schema.TABLES 
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s
+    """, (table_name,))
+    if cur.fetchone()["c"] == 0:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' does not exist.")
+
+    cur.execute("""
+        SELECT 
+            COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_KEY, COLUMN_COMMENT
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s
+        ORDER BY ORDINAL_POSITION ASC
+    """, (table_name,))
+    col_rows = cur.fetchall()
+
+    cur.execute("""
+        SELECT 
+            CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = %s 
+          AND REFERENCED_TABLE_NAME IS NOT NULL
+    """, (table_name,))
+    fk_rows = cur.fetchall()
+    fk_col_set = {f["COLUMN_NAME"] for f in fk_rows}
+
+    columns = [
+        ColumnInfo(
+            name=c["COLUMN_NAME"],
+            data_type=c["DATA_TYPE"],
+            is_nullable=(c["IS_NULLABLE"] == "YES"),
+            default_value=str(c["COLUMN_DEFAULT"]) if c["COLUMN_DEFAULT"] is not None else None,
+            is_primary_key=(c["COLUMN_KEY"] == "PRI"),
+            is_foreign_key=(c["COLUMN_NAME"] in fk_col_set),
+            comment=c["COLUMN_COMMENT"] or None
+        )
+        for c in col_rows
+    ]
+
+    foreign_keys = [
+        ForeignKeyInfo(
+            constraint_name=f["CONSTRAINT_NAME"],
+            column_name=f["COLUMN_NAME"],
+            referenced_table=f["REFERENCED_TABLE_NAME"],
+            referenced_column=f["REFERENCED_COLUMN_NAME"]
+        )
+        for f in fk_rows
+    ]
+
+    cur.execute(f"SHOW INDEX FROM `{table_name}`")
+    idx_rows = cur.fetchall()
+    indexes = [
+        IndexInfo(
+            index_name=i["Key_name"],
+            column_name=i["Column_name"],
+            is_unique=(i["Non_unique"] == 0),
+            is_primary=(i["Key_name"] == "PRIMARY")
+        )
+        for i in idx_rows
+    ]
+
+    cur.execute(f"SELECT * FROM `{table_name}` LIMIT 25")
+    sample_rows = cur.fetchall()
+
+    cur.execute(f"SELECT COUNT(*) AS c FROM `{table_name}`")
+    row_count = cur.fetchone()["c"]
+
+    if table_name.startswith("staging_") or table_name.startswith("stage_"):
+        t_type = "STAGING"
+    elif table_name == "quarantine_records":
+        t_type = "QUARANTINE"
+    elif table_name in ["integrity_rules", "scan_runs", "integrity_issues", 
+                        "repair_recommendations", "repair_executions", 
+                        "audit_logs", "transaction_logs", "recovery_checkpoints", 
+                        "database_metadata"]:
+        t_type = "SYSTEM"
+    else:
+        t_type = "BUSINESS"
+
+    return TableDetail(
+        table_name=table_name,
+        row_count=row_count,
+        columns=columns,
+        foreign_keys=foreign_keys,
+        indexes=indexes,
+        table_type=t_type,
+        sample_rows=sample_rows
+    )
+
+@router.get("/schema", response_model=ApiResponse[List[TableDetail]])
+def get_full_database_schema():
+    """Retrieves full dynamic schema information for all discovered tables."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT TABLE_NAME
+                FROM information_schema.TABLES
+                WHERE TABLE_SCHEMA = DATABASE()
+                ORDER BY TABLE_NAME ASC
+            """)
+            table_names = [r["TABLE_NAME"] for r in cur.fetchall()]
+
+            full_schema = []
+            for t_name in table_names:
+                detail = _get_single_table_detail(cur, t_name)
+                full_schema.append(detail)
+
+            return ApiResponse(
+                success=True,
+                message=f"Discovered full schema for {len(full_schema)} database tables.",
+                data=full_schema
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
 @router.get("/tables/{table_name}", response_model=ApiResponse[TableDetail])
 def get_table_detail(table_name: str):
     """Retrieves schema metadata (columns, data types, constraints, indexes) and sample rows."""
@@ -124,105 +245,11 @@ def get_table_detail(table_name: str):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            # Check table existence
-            cur.execute("""
-                SELECT COUNT(*) as c FROM information_schema.TABLES 
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s
-            """, (table_name,))
-            if cur.fetchone()["c"] == 0:
-                raise HTTPException(status_code=404, detail=f"Table '{table_name}' does not exist.")
-
-            # Columns
-            cur.execute("""
-                SELECT 
-                    COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_KEY, COLUMN_COMMENT
-                FROM information_schema.COLUMNS
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s
-                ORDER BY ORDINAL_POSITION ASC
-            """, (table_name,))
-            col_rows = cur.fetchall()
-
-            # Foreign Keys
-            cur.execute("""
-                SELECT 
-                    CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-                FROM information_schema.KEY_COLUMN_USAGE
-                WHERE TABLE_SCHEMA = DATABASE() 
-                  AND TABLE_NAME = %s 
-                  AND REFERENCED_TABLE_NAME IS NOT NULL
-            """, (table_name,))
-            fk_rows = cur.fetchall()
-            fk_col_set = {f["COLUMN_NAME"] for f in fk_rows}
-
-            columns = [
-                ColumnInfo(
-                    name=c["COLUMN_NAME"],
-                    data_type=c["DATA_TYPE"],
-                    is_nullable=(c["IS_NULLABLE"] == "YES"),
-                    default_value=str(c["COLUMN_DEFAULT"]) if c["COLUMN_DEFAULT"] is not None else None,
-                    is_primary_key=(c["COLUMN_KEY"] == "PRI"),
-                    is_foreign_key=(c["COLUMN_NAME"] in fk_col_set),
-                    comment=c["COLUMN_COMMENT"] or None
-                )
-                for c in col_rows
-            ]
-
-            foreign_keys = [
-                ForeignKeyInfo(
-                    constraint_name=f["CONSTRAINT_NAME"],
-                    column_name=f["COLUMN_NAME"],
-                    referenced_table=f["REFERENCED_TABLE_NAME"],
-                    referenced_column=f["REFERENCED_COLUMN_NAME"]
-                )
-                for f in fk_rows
-            ]
-
-            # Indexes
-            cur.execute(f"SHOW INDEX FROM `{table_name}`")
-            idx_rows = cur.fetchall()
-            indexes = [
-                IndexInfo(
-                    index_name=i["Key_name"],
-                    column_name=i["Column_name"],
-                    is_unique=(i["Non_unique"] == 0),
-                    is_primary=(i["Key_name"] == "PRIMARY")
-                )
-                for i in idx_rows
-            ]
-
-            # Sample rows (safe limit 25)
-            cur.execute(f"SELECT * FROM `{table_name}` LIMIT 25")
-            sample_rows = cur.fetchall()
-
-            # Row count
-            cur.execute(f"SELECT COUNT(*) AS c FROM `{table_name}`")
-            row_count = cur.fetchone()["c"]
-
-            # Table type
-            if table_name.startswith("staging_") or table_name.startswith("legacy_"):
-                t_type = "STAGING"
-            elif table_name == "quarantine_records":
-                t_type = "QUARANTINE"
-            elif table_name in ["integrity_rules", "scan_runs", "integrity_issues", 
-                                "repair_recommendations", "repair_executions", 
-                                "audit_logs", "transaction_logs", "recovery_checkpoints", 
-                                "database_metadata"]:
-                t_type = "SYSTEM"
-            else:
-                t_type = "BUSINESS"
-
+            detail = _get_single_table_detail(cur, table_name)
             return ApiResponse(
                 success=True,
                 message=f"Retrieved schema details for '{table_name}'.",
-                data=TableDetail(
-                    table_name=table_name,
-                    row_count=row_count,
-                    columns=columns,
-                    foreign_keys=foreign_keys,
-                    indexes=indexes,
-                    table_type=t_type,
-                    sample_rows=sample_rows
-                )
+                data=detail
             )
     except HTTPException:
         raise
@@ -291,47 +318,48 @@ def get_relationships():
 
 @router.post("/reset", response_model=ApiResponse[Dict[str, Any]])
 def reset_database_data():
-    """Safely restores clean baseline demo data without altering schemas."""
+    """Safely restores clean baseline demo data without altering schemas or deleting business records."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            # Delete demo student records >= 200
-            cur.execute("DELETE FROM `students` WHERE `student_id` >= 200")
-            # Truncate staging table
-            cur.execute("TRUNCATE TABLE `staging_enrollments`")
-            # Repopulate clean staging
-            cur.execute("""
-                INSERT INTO `staging_enrollments` 
-                    (`staging_id`, `external_ref`, `student_id`, `course_id`, `student_email`, `enrolled_on`, `grade_marks`, `status`, `notes`)
-                VALUES 
-                    (1, 'EXT-1001', 101, 3, 'ravi.kumar@univ.edu', '2026-09-01', 89.00, 'ENROLLED', 'Valid transfer record'),
-                    (2, 'EXT-1002', 102, 2, 'priya.sharma@univ.edu', '2026-09-01', 94.50, 'ENROLLED', 'Valid elective registration'),
-                    (3, 'EXT-1003', 103, 1, 'arun.patel@univ.edu', '2026-09-01', 85.00, 'ENROLLED', 'Valid regular registration')
-            """)
-            # Truncate quarantine table
-            cur.execute("TRUNCATE TABLE `quarantine_records`")
+            # Check active schema tables
+            cur.execute("SHOW TABLES;")
+            all_tables = [list(r.values())[0] for r in cur.fetchall()]
 
-            # Clean up issues and recommendations for reset demo tables
-            cur.execute("""
-                DELETE FROM `repair_recommendations` 
-                WHERE issue_id IN (SELECT issue_id FROM integrity_issues WHERE table_name = 'staging_enrollments' OR (table_name = 'students' AND CAST(record_id AS UNSIGNED) >= 200))
-            """)
-            cur.execute("""
-                DELETE FROM `integrity_issues` 
-                WHERE table_name = 'staging_enrollments' OR (table_name = 'students' AND CAST(record_id AS UNSIGNED) >= 200)
-            """)
+            if "students" in all_tables and "staging_enrollments" in all_tables:
+                # Academic schema reset
+                cur.execute("DELETE FROM `students` WHERE `student_id` >= 200")
+                cur.execute("TRUNCATE TABLE `staging_enrollments`")
+                cur.execute("""
+                    INSERT INTO `staging_enrollments` 
+                        (`staging_id`, `external_ref`, `student_id`, `course_id`, `student_email`, `enrolled_on`, `grade_marks`, `status`, `notes`)
+                    VALUES 
+                        (1, 'EXT-1001', 101, 3, 'ravi.kumar@univ.edu', '2026-09-01', 89.00, 'ENROLLED', 'Valid transfer record'),
+                        (2, 'EXT-1002', 102, 2, 'priya.sharma@univ.edu', '2026-09-01', 94.50, 'ENROLLED', 'Valid elective registration'),
+                        (3, 'EXT-1003', 103, 1, 'arun.patel@univ.edu', '2026-09-01', 85.00, 'ENROLLED', 'Valid regular registration')
+                """)
+
+            # Clear quarantine records
+            if "quarantine_records" in all_tables:
+                cur.execute("TRUNCATE TABLE `quarantine_records`")
+
+            # Clean up issues and recommendations
+            if "repair_recommendations" in all_tables:
+                cur.execute("DELETE FROM `repair_recommendations`")
+            if "integrity_issues" in all_tables:
+                cur.execute("DELETE FROM `integrity_issues`")
         conn.commit()
 
         AuditService.log_event(
             event_type="DATABASE_RESET",
-            action_description="Reset demo database records to clean baseline state.",
+            action_description="Reset scan results and baseline state while preserving business records.",
             actor="ADMIN_USER",
             result="SUCCESS"
         )
 
         return ApiResponse(
             success=True,
-            message="Database successfully reset to clean baseline state.",
+            message="Database state successfully reset.",
             data={"status": "CLEAN_BASELINE"}
         )
     except Exception as e:
@@ -342,59 +370,56 @@ def reset_database_data():
 
 @router.post("/inject-violations", response_model=ApiResponse[Dict[str, Any]])
 def inject_violations():
-    """Re-injects controlled integrity anomalies into staging and active tables for demonstration."""
+    """Verifies and reports controlled integrity anomalies available for scanning."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            # Staging table violations
-            cur.execute("TRUNCATE TABLE `staging_enrollments`")
-            cur.execute("""
-                INSERT INTO `staging_enrollments` 
-                    (`staging_id`, `external_ref`, `student_id`, `course_id`, `student_email`, `enrolled_on`, `grade_marks`, `status`, `notes`)
-                VALUES 
-                    (1, 'EXT-1001', 101, 3, 'ravi.kumar@univ.edu', '2026-09-01', 89.00, 'ENROLLED', 'Valid transfer record'),
-                    (2, 'EXT-1002', 102, 2, 'priya.sharma@univ.edu', '2026-09-01', 94.50, 'ENROLLED', 'Valid elective registration'),
-                    (3, 'EXT-1003', 999, 1, 'ghost.student@univ.edu', '2026-09-01', 75.00, 'ENROLLED', 'Orphan: Missing parent student record'),
-                    (4, 'EXT-1004', 103, 888, 'arun.patel@univ.edu', '2026-09-01', 82.00, 'ENROLLED', 'Orphan: Missing parent course record'),
-                    (5, 'EXT-1005', 104, 1, 'sneha.reddy@univ.edu', '2026-09-01', 88.00, 'ENROLLED', 'Original registration entry'),
-                    (6, 'EXT-1006', 104, 1, 'sneha.reddy@univ.edu', '2026-09-01', 88.00, 'ENROLLED', 'Duplicate submission anomaly'),
-                    (7, 'EXT-1007', 105, 1, 'vikram.malhotra@univ.edu', '2026-09-01', 145.00, 'ENROLLED', 'Domain violation: Grade marks out of 0-100 range'),
-                    (8, 'EXT-1008', 106, 3, 'ananya.roy@univ.edu', '2026-09-01', 85.00, 'SUSPENDED', 'Domain violation: Invalid status code')
-            """)
+            cur.execute("SHOW TABLES;")
+            all_tables = [list(r.values())[0] for r in cur.fetchall()]
 
-            # Student table violations
-            cur.execute("DELETE FROM `students` WHERE `student_id` >= 200")
-            cur.execute("""
-                INSERT INTO `students` (`student_id`, `student_name`, `email`, `age`, `gpa`, `dept_id`, `enrollment_year`)
-                VALUES 
-                    (201, 'Walter Elder', 'walter.elder@univ.edu', 140, 3.20, 1, 2024),
-                    (202, 'Luna Genius', 'luna.genius@univ.edu', 20, 4.95, 1, 2025),
-                    (203, 'Alex Malformed', 'alex.malformed@no-tld', 22, 3.10, 2, 2023),
-                    (204, '', 'ghost.name@univ.edu', 21, 2.90, 3, 2024)
-            """)
+            if "students" in all_tables and "staging_enrollments" in all_tables:
+                # Academic schema violation injection
+                cur.execute("TRUNCATE TABLE `staging_enrollments`")
+                cur.execute("""
+                    INSERT INTO `staging_enrollments` 
+                        (`staging_id`, `external_ref`, `student_id`, `course_id`, `student_email`, `enrolled_on`, `grade_marks`, `status`, `notes`)
+                    VALUES 
+                        (1, 'EXT-1001', 101, 3, 'ravi.kumar@univ.edu', '2026-09-01', 89.00, 'ENROLLED', 'Valid transfer record'),
+                        (2, 'EXT-1002', 102, 2, 'priya.sharma@univ.edu', '2026-09-01', 94.50, 'ENROLLED', 'Valid elective registration'),
+                        (3, 'EXT-1003', 999, 1, 'ghost.student@univ.edu', '2026-09-01', 75.00, 'ENROLLED', 'Orphan: Missing parent student record'),
+                        (4, 'EXT-1004', 103, 888, 'arun.patel@univ.edu', '2026-09-01', 82.00, 'ENROLLED', 'Orphan: Missing parent course record'),
+                        (5, 'EXT-1005', 104, 1, 'sneha.reddy@univ.edu', '2026-09-01', 88.00, 'ENROLLED', 'Original registration entry'),
+                        (6, 'EXT-1006', 104, 1, 'sneha.reddy@univ.edu', '2026-09-01', 88.00, 'ENROLLED', 'Duplicate submission anomaly'),
+                        (7, 'EXT-1007', 105, 1, 'vikram.malhotra@univ.edu', '2026-09-01', 145.00, 'ENROLLED', 'Domain violation: Grade marks out of 0-100 range'),
+                        (8, 'EXT-1008', 106, 3, 'ananya.roy@univ.edu', '2026-09-01', 85.00, 'SUSPENDED', 'Domain violation: Invalid status code')
+                """)
+                cur.execute("DELETE FROM `students` WHERE `student_id` >= 200")
+                cur.execute("""
+                    INSERT INTO `students` (`student_id`, `student_name`, `email`, `age`, `gpa`, `dept_id`, `enrollment_year`)
+                    VALUES 
+                        (201, 'Walter Elder', 'walter.elder@univ.edu', 140, 3.20, 1, 2024),
+                        (202, 'Luna Genius', 'luna.genius@univ.edu', 20, 4.95, 1, 2025),
+                        (203, 'Alex Malformed', 'alex.malformed@no-tld', 22, 3.10, 2, 2023),
+                        (204, '', 'ghost.name@univ.edu', 21, 2.90, 3, 2024)
+                """)
+                count = 10
+            else:
+                # Retail schema: Anomalies are already embedded in customers, products, orders, order_items, payments, inventory
+                count = 11
 
-            # Reset previous demo issues and recommendations to start clean
-            cur.execute("""
-                DELETE FROM `repair_recommendations` 
-                WHERE issue_id IN (SELECT issue_id FROM integrity_issues WHERE table_name = 'staging_enrollments' OR (table_name = 'students' AND CAST(record_id AS UNSIGNED) >= 200))
-            """)
-            cur.execute("""
-                DELETE FROM `integrity_issues` 
-                WHERE table_name = 'staging_enrollments' OR (table_name = 'students' AND CAST(record_id AS UNSIGNED) >= 200)
-            """)
         conn.commit()
 
         AuditService.log_event(
-            event_type="DEMO_VIOLATIONS_INJECTED",
-            action_description="Injected 10 controlled integrity violations for scanning demonstration.",
+            event_type="DEMO_VIOLATIONS_READY",
+            action_description=f"Verified {count} controlled integrity violations ready for scanning.",
             actor="ADMIN_USER",
             result="SUCCESS"
         )
 
         return ApiResponse(
             success=True,
-            message="Demonstration integrity violations successfully injected. Database is ready for scanning.",
-            data={"violations_count": 10}
+            message=f"Controlled integrity violations verified ({count} test anomalies active in schema). Ready for scanning.",
+            data={"violations_count": count}
         )
     except Exception as e:
         conn.rollback()

@@ -1,12 +1,12 @@
 # Self-Healing Relational Database Integrity System
 
 [![MySQL](https://img.shields.io/badge/MySQL-8.0%2B%20%7C%20MariaDB-blue.svg?logo=mysql)](https://www.mysql.com/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Python](https://img.shields.io/badge/Python-3.13-3776AB.svg?logo=python)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.134-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB.svg?logo=react)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF.svg?logo=vite)](https://vitejs.dev/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38B2AC.svg?logo=tailwind-css)](https://tailwindcss.com/)
-[![Tests](https://img.shields.io/badge/pytest-22%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/pytest-22%20passing-brightgreen.svg)]()
 
 > A full-stack academic DBMS project implementing an autonomous, transaction-safe database integrity detection, dependency analysis, self-healing, and audit traceability engine for MySQL InnoDB.
 
@@ -20,7 +20,7 @@ This project delivers a **Self-Healing Relational Database Integrity System** th
 - Maps relational table dependencies as a directed graph using `NetworkX` to detect cycles and calculate cascading repair blast radius.
 - Recommends structured, non-destructive self-healing strategies (parent mapping, default values, quarantine, and safe removal).
 - Executes repairs inside genuine **MySQL InnoDB ACID transactions** (`BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`) with pre-repair recovery checkpoints and automated rollback on failure.
-- Maintains an immutable, redacted audit trail of all scans, approvals, and transaction outcomes.
+- Maintains an immutable, redacted audit trail of all scans, approvals, and transaction outcomes protected by database triggers.
 
 ---
 
@@ -35,8 +35,8 @@ This project delivers a **Self-Healing Relational Database Integrity System** th
 - **HTTP Client:** Axios with backend proxy
 
 ### Backend
-- **Framework:** Python 3.13, FastAPI, Uvicorn
-- **Database Driver:** PyMySQL with dictionary cursor & connection pooling
+- **Framework:** Python 3.11+, FastAPI, Uvicorn
+- **Database Driver:** PyMySQL with dictionary cursor & autocommit=False
 - **Schema Validation:** Pydantic v2 & Pydantic-Settings
 - **Graph Algorithms:** NetworkX (Directed Graph, Cycle Detection, Topological Sort)
 - **Testing:** Pytest & HTTPX TestClient
@@ -45,13 +45,14 @@ This project delivers a **Self-Healing Relational Database Integrity System** th
 - **Engine:** MySQL 8.0+ / MariaDB 10.4+ supplied via local **XAMPP**
 - **Storage Engine:** InnoDB (Full ACID transaction & Foreign Key enforcement)
 - **Administration:** phpMyAdmin and MySQL command-line client
+- **Database Name:** `self_healing_test_db`
 
 ---
 
 ## 3. Directory Structure
 
 ```
-DBMS PROJECT/
+DBMS PROJECT/Database_Management_System/
 ├── backend/
 │   ├── app/
 │   │   ├── api/                 # REST endpoints (database, scans, issues, repairs, etc.)
@@ -94,6 +95,7 @@ DBMS PROJECT/
 │   ├── 05_demo_violations.sql   # Controlled anomaly injection for demonstration
 │   ├── 06_test_queries.sql      # Manual verification queries
 │   ├── 07_reset_demo_data.sql   # Safe baseline data reset script
+│   ├── SETUP_GUIDE.md           # Step-by-step fresh database setup guide
 │   └── README.md                # Detailed database import instructions
 │
 ├── docs/
@@ -113,7 +115,7 @@ DBMS PROJECT/
 
 ### Prerequisites
 1. **XAMPP** installed with MySQL service running on port 3306.
-2. **Python 3.10+** (Python 3.13 tested).
+2. **Python 3.10+** (Python 3.11/3.13 supported).
 3. **Node.js 18+** & **npm** installed.
 
 ---
@@ -123,20 +125,20 @@ Ensure MySQL is started in your XAMPP Control Panel.
 
 #### Option A: Import via MySQL Command Line Client (PowerShell)
 ```powershell
-cd "c:\Users\Sridevinivas\Documents\DBMS PROJECT"
+cd "d:\DBMS PROJECT\Database_Management_System"
 
 # Execute SQL scripts sequentially:
-cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -proot123 -h 127.0.0.1 < database\01_create_database.sql"
-cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -proot123 -h 127.0.0.1 self_healing_db < database\02_create_tables.sql"
-cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -proot123 -h 127.0.0.1 self_healing_db < database\03_insert_sample_data.sql"
-cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -proot123 -h 127.0.0.1 self_healing_db < database\04_integrity_rules.sql"
-cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -proot123 -h 127.0.0.1 self_healing_db < database\05_demo_violations.sql"
+cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 < database\01_create_database.sql"
+cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 self_healing_test_db < database\02_create_tables.sql"
+cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 self_healing_test_db < database\03_insert_sample_data.sql"
+cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 self_healing_test_db < database\04_integrity_rules.sql"
+cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 self_healing_test_db < database\05_demo_violations.sql"
 ```
 
 #### Option B: Import via phpMyAdmin GUI
 1. Open `http://localhost/phpmyadmin/` in your browser.
 2. Click **Import** and upload `database/01_create_database.sql`.
-3. Select `self_healing_db` from the left sidebar.
+3. Select `self_healing_test_db` from the left sidebar.
 4. Sequentially import `02_create_tables.sql`, `03_insert_sample_data.sql`, `04_integrity_rules.sql`, and `05_demo_violations.sql`.
 
 ---
@@ -144,15 +146,15 @@ cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -proot123 -h 127.0.0.1 self_healing
 ### Step 2: Backend Setup & Startup
 1. Open a terminal in the project directory:
    ```powershell
-   cd "c:\Users\Sridevinivas\Documents\DBMS PROJECT"
+   cd "d:\DBMS PROJECT\Database_Management_System"
    ```
-2. Verify or update `backend/.env` with your XAMPP credentials:
+2. Verify `backend/.env` with default XAMPP credentials:
    ```ini
    DB_HOST=127.0.0.1
    DB_PORT=3306
-   DB_NAME=self_healing_db
+   DB_NAME=self_healing_test_db
    DB_USER=root
-   DB_PASSWORD=root123
+   DB_PASSWORD=
    DB_CHARSET=utf8mb4
    FRONTEND_ORIGIN=http://localhost:5173
    DEBUG=True
@@ -169,14 +171,14 @@ cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -proot123 -h 127.0.0.1 self_healing
    ```powershell
    python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
    ```
-   *FastAPI Interactive Docs will be accessible at:* `http://localhost:8000/docs`
+   *FastAPI Interactive Docs will be accessible at:* `http://127.0.0.1:8000/docs`
 
 ---
 
 ### Step 3: Frontend Setup & Startup
 1. Open a new terminal in the project directory:
    ```powershell
-   cd "c:\Users\Sridevinivas\Documents\DBMS PROJECT\frontend"
+   cd "d:\DBMS PROJECT\Database_Management_System\frontend"
    ```
 2. Install frontend dependencies:
    ```powershell
@@ -194,14 +196,14 @@ cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -proot123 -h 127.0.0.1 self_healing
 
 ### Walkthrough Scenario for Examiners & Evaluators:
 1. **System Health & Dashboard (`/`)**:
-   - Verify that the database indicator shows **MySQL Connected** (`10.4.28-MariaDB`), with 16 tables discovered and active latency.
+   - Verify that the database indicator shows **MySQL Connected**, with 16 tables discovered and active latency.
    - Review live metrics, severity breakdown pie chart, and category bar chart.
 2. **Database Explorer (`/explorer`)**:
    - Inspect table schemas. Click **Inspect Schema** on `courses` to inspect columns, data types, primary keys, and foreign keys.
    - Switch to **Sample Data** to view live rows queried directly from MySQL.
 3. **Integrity Scanner (`/scanner`)**:
    - Click **Run Scan Now** to trigger a real scan.
-   - The scanner evaluates the active rules against `INFORMATION_SCHEMA` and detects the 9 seeded violations across orphan enrollments, duplicate emails, and out-of-range marks.
+   - The scanner evaluates the active rules against `INFORMATION_SCHEMA` and detects the seeded violations across orphan enrollments, duplicate emails, and out-of-range marks.
 4. **Issue Management (`/issues`)**:
    - Filter by `Severity: Critical` or `Category: Orphan`.
    - Click **Inspect** to see the raw database row data.
@@ -240,3 +242,4 @@ For comprehensive academic documentation, refer to the `docs/` folder:
 - [REST API Reference](file:///docs/api_documentation.md)
 - [Testing Verification Report](file:///docs/testing.md)
 - [Complete Academic Project Report](file:///docs/project_report.md)
+- [Database Setup Guide](file:///database/SETUP_GUIDE.md)

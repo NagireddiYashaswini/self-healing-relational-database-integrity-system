@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app.core.config import settings
 from backend.app.database.connection import test_database_connection
+from backend.app.database.system_tables import ensure_system_tables_exist
 from backend.app.models.schemas import ApiResponse
 from backend.app.api.database import router as database_router
 from backend.app.api.scans import router as scans_router
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     if status["connected"]:
         logger.info(f"Connected successfully to MySQL ({status['server_version']}) at {settings.DB_HOST}:{settings.DB_PORT}")
         logger.info(f"Target database '{settings.DB_NAME}' active with {status['table_count']} tables.")
+        ensure_system_tables_exist()
     else:
         logger.warning(f"Database connection warning: {status['message']}")
     yield

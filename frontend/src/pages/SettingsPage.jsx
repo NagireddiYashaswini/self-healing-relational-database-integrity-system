@@ -93,15 +93,16 @@ export const SettingsPage = () => {
   const config = dbStatus?.config || {};
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+    <div className="space-y-5 max-w-5xl mx-auto">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
         <div>
-          <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-            Settings & MySQL Connection
+          <h2 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <Settings className="w-5 h-5 text-indigo-600" />
+            Settings & Database Engine Diagnostics
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Engine diagnostics, environment configuration parameters, and demonstration replay tools.
+          <p className="text-xs text-slate-500 mt-0.5">
+            Real-time MySQL/MariaDB server diagnostics, runtime connection parameters, and controlled data replay tools.
           </p>
         </div>
 
@@ -116,13 +117,13 @@ export const SettingsPage = () => {
         </Button>
       </div>
 
-      {/* Grid: Server Health + Environment Settings */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Connection Diagnostics Card */}
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+      {/* Grid: Server Diagnostics + Environment Settings */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Engine Diagnostics Card */}
+        <div className="panel p-4 sm:p-5 space-y-3.5">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-              <Server className="w-4 h-4 text-emerald-400" /> XAMPP MySQL Engine
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <Server className="w-4 h-4 text-indigo-600" /> XAMPP MySQL Engine
             </h3>
             {dbStatus?.connected ? (
               <Badge variant="SUCCESS">Connected</Badge>
@@ -131,82 +132,82 @@ export const SettingsPage = () => {
             )}
           </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs font-mono">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Server Version:</span>
-              <span className="text-slate-200 font-bold">{dbStatus?.server_version || 'Unknown'}</span>
+          <div className="p-3 rounded-md bg-slate-50 border border-slate-200 space-y-2 text-xs font-mono">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Server Version:</span>
+              <span className="text-slate-900 font-semibold">{dbStatus?.server_version || 'Unknown'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Connected User:</span>
-              <span className="text-slate-200">{dbStatus?.connected_user || 'root@localhost'}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Connected User:</span>
+              <span className="text-slate-900 font-semibold">{dbStatus?.connected_user || 'root@localhost'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Active Database:</span>
-              <span className="text-emerald-400 font-bold">{dbStatus?.database_name}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Active Catalog:</span>
+              <span className="text-indigo-700 font-bold">{dbStatus?.database_name}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Total Tables:</span>
-              <span className="text-slate-200">{dbStatus?.table_count || 0} tables discovered</span>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Discovered Tables:</span>
+              <span className="text-slate-900 font-semibold">{dbStatus?.table_count || 0} tables</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Ping Latency:</span>
-              <span className="text-emerald-400">{dbStatus?.latency_ms || 0} ms</span>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Ping Latency:</span>
+              <span className="text-emerald-700 font-bold">{dbStatus?.latency_ms || 0} ms</span>
             </div>
           </div>
 
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <p className="text-xs text-slate-500 leading-relaxed">
             {dbStatus?.message}
           </p>
         </div>
 
-        {/* Environment Configuration Parameters */}
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-            <Settings className="w-4 h-4 text-blue-400" /> Environment Parameters
+        {/* Environment Configuration Card */}
+        <div className="panel p-4 sm:p-5 space-y-3.5">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+            <Settings className="w-4 h-4 text-indigo-600" /> Connection Parameters
           </h3>
 
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs font-mono">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Database Host:</span>
-              <span className="text-slate-200">{config.db_host || '127.0.0.1'}</span>
+          <div className="p-3 rounded-md bg-slate-50 border border-slate-200 space-y-2 text-xs font-mono">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Host Address:</span>
+              <span className="text-slate-900 font-semibold">{config.db_host || '127.0.0.1'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Database Port:</span>
-              <span className="text-slate-200">{config.db_port || 3306}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">TCP Port:</span>
+              <span className="text-slate-900 font-semibold">{config.db_port || 3306}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Database Encoding:</span>
-              <span className="text-slate-200">{config.db_charset || 'utf8mb4'}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Charset / Collation:</span>
+              <span className="text-slate-900 font-semibold">{config.db_charset || 'utf8mb4'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Storage Engine:</span>
-              <span className="text-slate-200">InnoDB (ACID + Foreign Keys)</span>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Storage Engine:</span>
+              <span className="text-indigo-700 font-bold">InnoDB (Transactional)</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Credentials Security:</span>
-              <span className="text-emerald-400">Environment Redacted</span>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Auth Privacy:</span>
+              <span className="text-emerald-700 font-bold">Environment Redacted</span>
             </div>
           </div>
 
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Application connection parameters are loaded from <code className="text-slate-200 font-mono">backend/.env</code>. Passwords and secret credentials are never exposed through API responses or frontend client code.
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Connection parameters are managed via <code className="text-indigo-700 font-mono font-semibold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">backend/.env</code>. Passwords and secret credentials are never exposed in API payloads or client-side bundles.
           </p>
         </div>
       </div>
 
       {/* Demonstration Data Replay Tools */}
-      <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-          <RotateCcw className="w-4 h-4 text-amber-400" /> Demonstration Data Replay Tools
+      <div className="panel p-4 sm:p-5 space-y-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+          <RotateCcw className="w-4 h-4 text-indigo-600" /> Demonstration Data Replay Tools
         </h3>
-        <p className="text-xs text-slate-400">
-          Use these one-click tools to reset the database to a baseline clean state or re-inject controlled integrity anomalies for demonstration evaluation.
+        <p className="text-xs text-slate-500 leading-relaxed">
+          One-click utility tools to reset the test database to a clean baseline or re-inject controlled integrity anomalies for demonstration and grading verification.
         </p>
 
-        <div className="flex flex-wrap items-center gap-3 pt-2">
+        <div className="flex flex-wrap items-center gap-2.5 pt-1">
           <Button
-            variant="outline"
-            size="md"
+            variant="secondary"
+            size="sm"
             icon={RotateCcw}
             loading={resetting}
             onClick={() => setResetConfirmOpen(true)}
@@ -216,7 +217,7 @@ export const SettingsPage = () => {
 
           <Button
             variant="primary"
-            size="md"
+            size="sm"
             icon={Play}
             loading={injecting}
             onClick={() => setInjectConfirmOpen(true)}
@@ -227,20 +228,22 @@ export const SettingsPage = () => {
       </div>
 
       {/* Academic Project Metadata */}
-      <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Academic DBMS Project Deliverable</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono text-slate-300">
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
-            <span className="text-[10px] text-slate-500 block uppercase">Project Title</span>
-            <span className="font-bold text-white">Self-Healing Relational DBMS</span>
+      <div className="panel p-4 sm:p-5 space-y-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Academic DBMS Project Deliverable
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
+          <div className="p-3 rounded-md bg-slate-50 border border-slate-200">
+            <span className="text-[10px] text-slate-400 block uppercase font-bold">Project Name</span>
+            <span className="font-semibold text-slate-900">Self-Healing Relational DBMS</span>
           </div>
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
-            <span className="text-[10px] text-slate-500 block uppercase">Target Environment</span>
-            <span>XAMPP MySQL / MariaDB</span>
+          <div className="p-3 rounded-md bg-slate-50 border border-slate-200">
+            <span className="text-[10px] text-slate-400 block uppercase font-bold">Target Runtime</span>
+            <span className="font-semibold text-slate-900">XAMPP MariaDB 10.4.32</span>
           </div>
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
-            <span className="text-[10px] text-slate-500 block uppercase">Core Concepts</span>
-            <span className="text-emerald-400">ACID, FK Graph, Self-Healing</span>
+          <div className="p-3 rounded-md bg-slate-50 border border-slate-200">
+            <span className="text-[10px] text-slate-400 block uppercase font-bold">Core Modules</span>
+            <span className="text-indigo-700 font-semibold">InnoDB ACID, FK Graph, Healer</span>
           </div>
         </div>
       </div>
@@ -264,7 +267,7 @@ export const SettingsPage = () => {
         loading={injecting}
         variant="primary"
         title="Inject Demonstration Violations"
-        message="This operation will populate 10 controlled integrity violations (orphans, duplicates, out-of-range marks, invalid enums) into staging and active tables for scanning and healing demonstration."
+        message="This operation will populate controlled integrity violations (orphans, duplicates, negative prices, invalid enums) into staging and active tables for scanning and healing demonstration."
         confirmText="Inject Violations"
       />
     </div>

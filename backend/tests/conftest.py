@@ -17,6 +17,9 @@ def client():
 
 @pytest.fixture(scope="session")
 def mysql_available():
-    """Checks if XAMPP MySQL is active for integration tests."""
-    status = test_database_connection()
-    return status.get("connected", False)
+    """Checks if XAMPP MySQL is active and the target database exists for integration tests."""
+    try:
+        status = test_database_connection()
+        return bool(status.get("connected") and status.get("database_exists"))
+    except Exception:
+        return False

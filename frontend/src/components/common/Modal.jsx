@@ -23,26 +23,27 @@ export const Modal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity" 
+        className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity" 
         onClick={onClose} 
       />
 
       {/* Modal Dialog */}
-      <div className={`relative z-10 w-full ${maxWidth} glass-panel rounded-2xl border border-slate-700/80 shadow-2xl p-6 bg-slate-900/95 overflow-hidden my-8`}>
-        <div className="flex items-start justify-between pb-4 border-b border-slate-800">
-          <div>
-            <h3 className="text-lg font-bold text-slate-100">{title}</h3>
-            {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+      <div className={`relative z-10 w-full ${maxWidth} bg-white rounded-lg border border-slate-200 shadow-xl overflow-hidden my-8`}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-white">
+          <div className="min-w-0 pr-4">
+            <h3 className="text-sm font-semibold text-slate-900 truncate">{title}</h3>
+            {subtitle && <p className="text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors flex-shrink-0"
+            aria-label="Close modal"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="mt-4 max-h-[75vh] overflow-y-auto pr-1">
+        <div className="p-5 max-h-[75vh] overflow-y-auto">
           {children}
         </div>
       </div>

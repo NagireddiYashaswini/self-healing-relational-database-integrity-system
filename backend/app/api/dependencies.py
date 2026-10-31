@@ -42,11 +42,11 @@ def get_table_dependency(table_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/impact", response_model=ApiResponse[Dict[str, Any]])
-def assess_impact(table_name: str, record_id: str, action: str = "DELETE_RECORD"):
+def assess_impact(table_name: str, record_id: str, action: str = "DELETE_RECORD", issue_severity: str = "MEDIUM"):
     """Calculates foreign key cascading impact and blast radius before modifying a record."""
     try:
         table_name = validate_identifier(table_name)
-        impact = analyzer.assess_repair_impact(table_name, record_id, action)
+        impact = analyzer.assess_repair_impact(table_name, record_id, action, issue_severity=issue_severity)
         return ApiResponse(
             success=True,
             message="Repair impact assessment completed.",

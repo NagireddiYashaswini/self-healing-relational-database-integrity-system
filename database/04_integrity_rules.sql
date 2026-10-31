@@ -3,9 +3,10 @@
 -- Script 04: Integrity Rules Definition
 -- Seed standard database integrity rules across all 5 categories:
 -- ORPHAN, DUPLICATE, NULL_CHECK, DOMAIN_CHECK, RELATIONAL_CONSISTENCY
+-- Database: self_healing_test_db
 -- =============================================================================
 
-USE `self_healing_db`;
+USE `self_healing_test_db`;
 
 INSERT INTO `integrity_rules` (
     `rule_code`, `name`, `description`, `rule_type`, 

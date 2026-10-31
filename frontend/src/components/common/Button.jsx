@@ -2,17 +2,24 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 
 const VARIANTS = {
-  primary: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30 border border-emerald-500/30 active:scale-[0.98]',
-  secondary: 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 active:scale-[0.98]',
-  danger: 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-900/30 border border-rose-500/30 active:scale-[0.98]',
-  outline: 'bg-transparent hover:bg-slate-800/60 text-slate-300 border border-slate-700 active:scale-[0.98]',
-  ghost: 'bg-transparent hover:bg-slate-800/40 text-slate-400 hover:text-slate-100',
+  primary:
+    'bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700/50 shadow-xs active:bg-indigo-800',
+  secondary:
+    'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs active:bg-slate-100',
+  outline:
+    'bg-transparent hover:bg-slate-100 text-slate-700 border border-slate-300 active:bg-slate-200',
+  ghost:
+    'bg-transparent hover:bg-slate-100 text-slate-600 hover:text-slate-900',
+  danger:
+    'bg-rose-600 hover:bg-rose-700 text-white border border-rose-700/60 shadow-xs active:bg-rose-800',
+  success:
+    'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700/60 shadow-xs active:bg-emerald-800',
 };
 
 const SIZES = {
-  sm: 'px-2.5 py-1 text-xs font-medium rounded',
-  md: 'px-3.5 py-1.5 text-sm font-medium rounded-md',
-  lg: 'px-5 py-2.5 text-base font-semibold rounded-lg',
+  sm: 'h-7 px-2.5 text-xs font-medium rounded',
+  md: 'h-8 px-3 text-xs font-medium rounded-md',
+  lg: 'h-9 px-4 text-sm font-medium rounded-md',
 };
 
 export const Button = ({
@@ -32,15 +39,15 @@ export const Button = ({
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 transition-all duration-150 select-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 transition-colors select-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${VARIANTS[variant] || VARIANTS.primary} ${SIZES[size] || SIZES.md} ${className}`}
       {...props}
     >
       {loading ? (
-        <Loader2 className="w-4 h-4 animate-spin" />
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-current" />
       ) : Icon ? (
-        <Icon className="w-4 h-4" />
+        <Icon className="w-3.5 h-3.5 text-current" />
       ) : null}
-      {children}
+      <span className="truncate">{children}</span>
     </button>
   );
 };

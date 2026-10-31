@@ -2,9 +2,10 @@
 -- Self-Healing Relational Database Integrity System
 -- Script 07: Reset Database to Clean Baseline State
 -- Resets staging tables, clears active demo anomalies, retains structural data.
+-- Database: self_healing_test_db
 -- =============================================================================
 
-USE `self_healing_db`;
+USE `self_healing_test_db`;
 
 -- 1. Remove temporary demo anomaly students (ID >= 200)
 DELETE FROM `students` WHERE `student_id` >= 200;

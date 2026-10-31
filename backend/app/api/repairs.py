@@ -1,11 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from typing import Dict, Any, List, Optional
 from backend.app.database.connection import get_connection
 from backend.app.models.schemas import (
     ApiResponse, RepairPreviewRequest, RepairPreviewResponse, 
     RepairExecuteRequest, RepairExecutionModel
 )
-from backend.app.services.repair_engine import RepairEngine
+from backend.app.services.repair_engine import RepairEngine, AlreadyRepairedError, StalePreviewError
 
 router = APIRouter(prefix="/repairs", tags=["Self-Healing & Repair Center"])
 
@@ -75,17 +75,31 @@ def get_recommendation(recommendation_id: int):
 def preview_repair(payload: RepairPreviewRequest):
     """Generates an impact analysis, state diff, and SQL preview for an issue before execution."""
     try:
+        params = dict(payload.repair_parameters or {})
+        if payload.admin_provided_value and "value" not in params:
+            params["value"] = payload.admin_provided_value
+
         preview = engine.get_repair_preview(
             issue_id=payload.issue_id,
             strategy_override=payload.strategy.value if payload.strategy else None,
-            repair_parameters=payload.repair_parameters
+            repair_parameters=params
         )
         return ApiResponse(
             success=True,
             message="Repair preview generated successfully.",
             data=RepairPreviewResponse(**preview)
         )
+    except AlreadyRepairedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This integrity issue has already been repaired. Duplicate execution is not allowed."
+        )
     except Exception as e:
+        if "already been repaired" in str(e).lower() or "already repaired" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This integrity issue has already been repaired. Duplicate execution is not allowed."
+            )
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/approve", response_model=ApiResponse[Dict[str, Any]])
@@ -102,26 +116,56 @@ def execute_repair(payload: RepairExecuteRequest):
     """
     Executes a self-healing repair within an atomic transaction.
     Requires confirmed=True for destructive strategies (DELETE_RECORD, QUARANTINE).
+    Enforces server-side duplicate execution protection (HTTP 409 Conflict).
     """
     try:
+        strat_str = payload.strategy.value if hasattr(payload.strategy, "value") else str(payload.strategy)
+        if strat_str == "MANUAL_INTERVENTION":
+            raise HTTPException(
+                status_code=400,
+                detail="MANUAL_INTERVENTION cannot be executed automatically. This integrity anomaly requires human operator review."
+            )
+
         # Destructive safety check
-        if payload.strategy in ["DELETE_RECORD", "QUARANTINE"] and not payload.confirmed:
+        if strat_str in ["DELETE_RECORD", "QUARANTINE"] and not payload.confirmed:
             raise HTTPException(
                 status_code=400,
                 detail="Destructive repair strategy requires explicit user confirmation (confirmed=True)."
             )
 
+        params = dict(payload.repair_parameters or {})
+        if payload.admin_provided_value and "value" not in params:
+            params["value"] = payload.admin_provided_value
+
         result = engine.execute_repair(
             issue_id=payload.issue_id,
-            strategy=payload.strategy.value,
-            repair_parameters=payload.repair_parameters,
+            strategy=strat_str,
+            repair_parameters=params,
             confirmed=payload.confirmed,
-            operator=payload.operator
+            operator=payload.operator,
+            row_version_token=payload.row_version_token
         )
         return ApiResponse(success=True, message=result["message"], data=result)
+    except AlreadyRepairedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This integrity issue has already been repaired. Duplicate execution is not allowed."
+        )
+    except StalePreviewError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
+        if "already been repaired" in str(e).lower() or "already repaired" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This integrity issue has already been repaired. Duplicate execution is not allowed."
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/executions", response_model=ApiResponse[List[Dict[str, Any]]])

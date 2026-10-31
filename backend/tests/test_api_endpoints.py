@@ -1,55 +1,25 @@
 import pytest
+from backend.app.core.config import settings
+
+# =============================================================================
+# API Contract & Validation Tests (Standalone - Do not require MySQL)
+# =============================================================================
 
 def test_api_health(client):
+    """Verifies that the /api/health endpoint returns valid diagnostic structure."""
     res = client.get("/api/health")
     assert res.status_code == 200
     data = res.json()
-    assert data["success"] is True
+    assert "data" in data
+    assert data["data"]["service"] == settings.PROJECT_NAME
     assert "database" in data["data"]
-
-def test_api_database_status(client):
-    res = client.get("/api/database/status")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["success"] is True
-    assert "tables" in data["data"]
-
-def test_api_database_tables(client):
-    res = client.get("/api/database/tables")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["success"] is True
-    assert len(data["data"]) >= 10
-
-def test_api_list_rules(client):
-    res = client.get("/api/rules")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["success"] is True
-    assert len(data["data"]) >= 5
-
-def test_api_dependency_graph(client):
-    res = client.get("/api/dependencies/graph")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["success"] is True
-    assert "nodes" in data["data"]
-    assert "edges" in data["data"]
-
-def test_api_audit_logs(client):
-    res = client.get("/api/audit-logs")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["success"] is True
-    assert "items" in data["data"]
+    assert data["data"]["database"]["database_name"] == settings.DB_NAME
 
 def test_api_cannot_manually_mark_repaired(client):
+    """Verifies that client cannot manually set status to REPAIRED without repair engine."""
     res = client.patch("/api/issues/TEST-123/status", json={"status": "REPAIRED"})
     assert res.status_code == 400
     assert "Cannot manually mark issue as REPAIRED" in res.json()["error"]
-
-
-# --- Focused Tests for Audit Findings ---
 
 def test_cors_trusted_origin_allowed(client):
     """Finding 1: Verify explicitly trusted origin is allowed with credentials."""
@@ -78,16 +48,71 @@ def test_invalid_sql_identifier_returns_400(client):
     assert res_dep.status_code == 400
     assert "Invalid SQL identifier" in (res_dep.json().get("error") or res_dep.json().get("message"))
 
-def test_nonexistent_scan_issues_returns_404(client):
+
+# =============================================================================
+# API Database Integration Tests (Require active XAMPP MySQL test database)
+# =============================================================================
+
+def test_api_database_status(client, mysql_available):
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
+    res = client.get("/api/database/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "tables" in data["data"]
+
+def test_api_database_tables(client, mysql_available):
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
+    res = client.get("/api/database/tables")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert len(data["data"]) >= 10
+
+def test_api_list_rules(client, mysql_available):
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
+    res = client.get("/api/rules")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert len(data["data"]) >= 5
+
+def test_api_dependency_graph(client, mysql_available):
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
+    res = client.get("/api/dependencies/graph")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "nodes" in data["data"]
+    assert "edges" in data["data"]
+
+def test_api_audit_logs(client, mysql_available):
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
+    res = client.get("/api/audit-logs")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "items" in data["data"]
+
+def test_nonexistent_scan_issues_returns_404(client, mysql_available):
     """Finding 3: Verify nonexistent scan ID returns HTTP 404 instead of 200."""
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
     res = client.get("/api/scans/NONEXISTENT-SCAN-ID/issues")
     assert res.status_code == 404
     data = res.json()
     assert data["success"] is False
     assert "not found" in data["message"].lower()
 
-def test_valid_scan_issues_regression(client):
+def test_valid_scan_issues_regression(client, mysql_available):
     """Finding 3 Regression: Verify existing scan ID returns HTTP 200 with issues."""
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
     scans_res = client.get("/api/scans?limit=1")
     assert scans_res.status_code == 200
     scans = scans_res.json().get("data", [])
@@ -97,20 +122,24 @@ def test_valid_scan_issues_regression(client):
         assert res.status_code == 200
         assert res.json()["success"] is True
 
-def test_nonexistent_table_neighborhood_returns_404(client):
+def test_nonexistent_table_neighborhood_returns_404(client, mysql_available):
     """Finding 4: Verify nonexistent table returns HTTP 404 instead of 200."""
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
     res = client.get("/api/dependencies/table/nonexistent_table_xyz")
     assert res.status_code == 404
     data = res.json()
     assert data["success"] is False
     assert "does not exist" in data["message"]
 
-def test_valid_table_neighborhood_regression(client):
+def test_valid_table_neighborhood_regression(client, mysql_available):
     """Finding 4 Regression: Verify valid table returns HTTP 200 with neighborhood data."""
-    res = client.get("/api/dependencies/table/students")
+    if not mysql_available:
+        pytest.skip("Integration test requires active MySQL database 'self_healing_test_db'")
+    res = client.get("/api/dependencies/table/customers")
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
-    assert data["data"]["table_name"] == "students"
+    assert data["data"]["table_name"] == "customers"
     assert "direct_parents" in data["data"]
     assert "direct_children" in data["data"]

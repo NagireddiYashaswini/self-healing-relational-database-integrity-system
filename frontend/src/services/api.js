@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+const baseURL = import.meta.env.VITE_API_BASE_URL 
+  ? `${import.meta.env.VITE_API_BASE_URL}/api`
+  : '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -13,7 +17,10 @@ api.interceptors.response.use(
   (error) => {
     const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Network request failed';
     console.error('API Request Error:', errorMsg);
-    return Promise.reject(new Error(errorMsg));
+    const customError = new Error(errorMsg);
+    customError.status = error.response?.status;
+    customError.response = error.response;
+    return Promise.reject(customError);
   }
 );
 
@@ -21,6 +28,7 @@ export const databaseApi = {
   getStatus: () => api.get('/database/status'),
   testConnection: () => api.post('/database/test-connection'),
   getTables: () => api.get('/database/tables'),
+  getSchema: () => api.get('/database/schema'),
   getTableDetail: (tableName) => api.get(`/database/tables/${tableName}`),
   getRelationships: () => api.get('/database/relationships'),
   resetData: () => api.post('/database/reset'),

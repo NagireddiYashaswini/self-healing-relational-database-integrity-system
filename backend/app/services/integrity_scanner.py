@@ -3,20 +3,89 @@ import json
 import logging
 import re
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set, Tuple
 from backend.app.database.connection import get_connection, validate_identifier
 from backend.app.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
-# Business and staging tables that are scanned by default
+# Architectural categorization of database tables
+TABLE_SYSTEM = {
+    'integrity_rules', 'scan_runs', 'integrity_issues',
+    'repair_recommendations', 'repair_executions', 'database_metadata',
+    'quarantine_records'
+}
+TABLE_AUDIT = {'audit_logs', 'transaction_logs'}
+TABLE_RECOVERY = {'recovery_checkpoints'}
+
+# Fallback default tables if metadata lookup is unavailable
 DEFAULT_SCAN_TABLES = [
-    "departments", "instructors", "courses", "students", "enrollments", "staging_enrollments"
+    "customers", "categories", "suppliers", "products", "orders", "order_items", "payments", "inventory"
 ]
+
+def classify_table(table_name: str) -> str:
+    """Classifies a database table into its architectural category."""
+    tbl = table_name.lower().strip()
+    if tbl in TABLE_AUDIT or tbl.startswith('audit_'):
+        return 'audit'
+    if tbl in TABLE_RECOVERY or tbl.startswith('recovery_') or tbl.startswith('ckpt_'):
+        return 'recovery'
+    if tbl in TABLE_SYSTEM or tbl.startswith('sys_'):
+        return 'system'
+    if tbl.startswith('staging_') or tbl.startswith('stage_') or tbl.startswith('temp_'):
+        return 'staging'
+    return 'business'
 
 class IntegrityScanner:
     def __init__(self):
         pass
+
+    def discover_tables(self, conn) -> Dict[str, List[str]]:
+        """
+        Discovers all tables from INFORMATION_SCHEMA and groups them by architectural role:
+        - business: Core relational entities (departments, instructors, courses, students, enrollments)
+        - staging: Unconstrained staging tables for external data feeds (staging_enrollments)
+        - system: Engine configurations, scan runs, and issue trackers
+        - audit: Immutable audit logs and transaction history
+        - recovery: Table-state checkpoint snapshots
+        """
+        categorized: Dict[str, List[str]] = {
+            "business": [],
+            "staging": [],
+            "system": [],
+            "audit": [],
+            "recovery": []
+        }
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT TABLE_NAME 
+                    FROM information_schema.TABLES
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    ORDER BY TABLE_NAME ASC
+                """)
+                rows = cur.fetchall()
+                for r in rows:
+                    tname = r["TABLE_NAME"]
+                    cat = classify_table(tname)
+                    categorized[cat].append(tname)
+        except Exception as e:
+            logger.warning(f"Could not discover tables dynamically: {e}")
+            categorized["business"] = ["customers", "categories", "suppliers", "products", "orders", "order_items", "payments", "inventory"]
+            categorized["staging"] = []
+            categorized["system"] = list(TABLE_SYSTEM)
+            categorized["audit"] = list(TABLE_AUDIT)
+            categorized["recovery"] = list(TABLE_RECOVERY)
+        return categorized
+
+    def _discover_scannable_tables(self, conn) -> List[str]:
+        """
+        Discovers scannable business and staging tables.
+        Explicitly excludes audit, recovery, and system engine tables from business rule evaluation.
+        """
+        tbls = self.discover_tables(conn)
+        scannable = tbls["business"] + tbls["staging"]
+        return scannable if scannable else DEFAULT_SCAN_TABLES
 
     def run_scan(
         self,
@@ -32,17 +101,17 @@ class IntegrityScanner:
         scan_id = f"SCAN-{uuid.uuid4().hex[:10].upper()}"
         start_time = datetime.now()
 
-        # Determine target tables
-        if not target_tables or len(target_tables) == 0:
-            tables_to_scan = DEFAULT_SCAN_TABLES
-        else:
-            tables_to_scan = [validate_identifier(t) for t in target_tables]
-
         conn = get_connection()
         total_rows_inspected = 0
         detected_issues: List[Dict[str, Any]] = []
 
         try:
+            # Determine target tables dynamically from INFORMATION_SCHEMA if not explicitly specified
+            if not target_tables or len(target_tables) == 0:
+                tables_to_scan = self._discover_scannable_tables(conn)
+            else:
+                tables_to_scan = [validate_identifier(t) for t in target_tables]
+
             # Step 1: Create scan_runs entry in RUNNING state
             with conn.cursor() as cur:
                 cur.execute(
@@ -77,16 +146,26 @@ class IntegrityScanner:
                 issues = self._execute_rule(conn, scan_id, rule)
                 detected_issues.extend(issues)
 
-            # Step 5: Also inspect declared Foreign Keys in INFORMATION_SCHEMA for unconstrained child tables
-            fk_issues = self._scan_declared_foreign_keys(conn, scan_id, tables_to_scan)
+            # Step 5: Also inspect declared Foreign Keys in INFORMATION_SCHEMA for business child tables
+            rule_fk_covered = {(r["target_table"], r["target_column"]) for r in active_rules if r.get("rule_type") == "ORPHAN"}
+            fk_issues = self._scan_declared_foreign_keys(conn, scan_id, tables_to_scan, rule_fk_covered)
             detected_issues.extend(fk_issues)
 
-            # Step 6: Deduplicate issues by (table_name, record_id, rule_code)
+            # Step 5b: For FULL scans, perform appropriate system table validation (separate from business rules)
+            if scan_type == "FULL":
+                sys_issues = self._scan_system_tables(conn, scan_id)
+                detected_issues.extend(sys_issues)
+
+            # Step 6: Deduplicate issues by (table_name, record_id, column_name, category)
             unique_issues_map = {}
             for issue in detected_issues:
-                key = (issue["table_name"], str(issue["record_id"]), issue["rule_code"])
+                key = (issue["table_name"], str(issue["record_id"]), str(issue.get("column_name") or ""), issue["category"])
                 if key not in unique_issues_map:
                     unique_issues_map[key] = issue
+                else:
+                    # Prefer rule-associated issue over unmapped FK issue if both present
+                    if issue.get("rule_id") and not unique_issues_map[key].get("rule_id"):
+                        unique_issues_map[key] = issue
             final_issues = list(unique_issues_map.values())
 
             # Step 7: Persist detected issues and recommendations
@@ -100,16 +179,18 @@ class IntegrityScanner:
                     t_name = issue["table_name"]
                     r_id = str(issue["record_id"])
                     r_code = issue["rule_code"]
+                    c_name = issue.get("column_name") or ""
+                    cat_name = issue["category"]
 
-                    # Check for an existing open/active issue for this exact record and rule
+                    # Check for an existing open/active issue for this exact record and violation
                     cur.execute(
                         """
                         SELECT issue_id, status FROM integrity_issues
-                        WHERE table_name = %s AND record_id = %s AND rule_code = %s
+                        WHERE table_name = %s AND record_id = %s AND (rule_code = %s OR (column_name = %s AND category = %s))
                         ORDER BY detected_at DESC
                         LIMIT 1
                         """,
-                        (t_name, r_id, r_code)
+                        (t_name, r_id, r_code, c_name, cat_name)
                     )
                     existing_issue = cur.fetchone()
 
@@ -120,6 +201,8 @@ class IntegrityScanner:
                             """
                             UPDATE integrity_issues SET
                                 scan_id = %s,
+                                rule_id = %s,
+                                rule_code = %s,
                                 invalid_value = %s,
                                 description = %s,
                                 detected_at = NOW()
@@ -127,6 +210,8 @@ class IntegrityScanner:
                             """,
                             (
                                 issue["scan_id"],
+                                issue.get("rule_id"),
+                                issue["rule_code"],
                                 str(issue.get("invalid_value")),
                                 issue["description"],
                                 issue["issue_id"]
@@ -390,21 +475,23 @@ class IntegrityScanner:
             elif rule_type == "DUPLICATE":
                 cols = [validate_identifier(c.strip()) for c in rule["target_column"].split(",")]
                 cols_sql = ", ".join([f"`{c}`" for c in cols])
+                not_null_cond = " AND ".join([f"`{c}` IS NOT NULL AND TRIM(`{c}`) != ''" for c in cols])
                 
                 query = f"""
-                    SELECT {cols_sql}, COUNT(*) as dup_count, GROUP_CONCAT(`{pk_col}`) as conflicting_pks
+                    SELECT {cols_sql}, COUNT(*) as dup_count, GROUP_CONCAT(`{pk_col}` ORDER BY `{pk_col}` ASC) as conflicting_pks
                     FROM `{target_table}`
+                    WHERE {not_null_cond}
                     GROUP BY {cols_sql}
                     HAVING COUNT(*) > 1
                 """
                 cur.execute(query)
                 rows = cur.fetchall()
                 for r in rows:
-                    conflicting_ids = str(r["conflicting_pks"]).split(",")
-                    # Flag the later occurrences as duplicate issues
+                    conflicting_ids = [cid.strip() for cid in str(r["conflicting_pks"]).split(",") if cid.strip()]
+                    canonical_id = conflicting_ids[0]
                     for dup_pk in conflicting_ids[1:]:
                         issue_id = f"ISSUE-DUP-{uuid.uuid4().hex[:8].upper()}"
-                        val_repr = ", ".join([f"{c}={r[c]}" for c in cols])
+                        val_str = r[cols[0]] if len(cols) == 1 else ", ".join([f"{c}={r[c]}" for c in cols])
                         issues.append({
                             "issue_id": issue_id,
                             "scan_id": scan_id,
@@ -413,10 +500,10 @@ class IntegrityScanner:
                             "category": "DUPLICATE",
                             "severity": rule["severity"],
                             "table_name": target_table,
-                            "record_id": dup_pk,
+                            "record_id": str(dup_pk),
                             "column_name": rule["target_column"],
-                            "invalid_value": val_repr,
-                            "description": f"Duplicate record in '{target_table}' on ({val_repr}) colliding with canonical record ID {conflicting_ids[0]}."
+                            "invalid_value": str(val_str),
+                            "description": f"Duplicate candidate key in '{target_table}' ({pk_col}={dup_pk}): '{rule['target_column']}' = '{val_str}' conflicts with canonical original record {pk_col}={canonical_id}."
                         })
 
             # 3. NULL / REQUIRED CHECK
@@ -528,9 +615,10 @@ class IntegrityScanner:
 
         return issues
 
-    def _scan_declared_foreign_keys(self, conn, scan_id: str, tables: List[str]) -> List[Dict[str, Any]]:
+    def _scan_declared_foreign_keys(self, conn, scan_id: str, tables: List[str], rule_fk_covered: Optional[Set[Tuple[str, str]]] = None) -> List[Dict[str, Any]]:
         """Scans declared foreign keys in INFORMATION_SCHEMA for orphan child records."""
         issues = []
+        covered_set = rule_fk_covered or set()
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT 
@@ -547,7 +635,7 @@ class IntegrityScanner:
                 parent_tbl = fk["REFERENCED_TABLE_NAME"]
                 parent_col = fk["REFERENCED_COLUMN_NAME"]
 
-                if child_tbl not in tables:
+                if child_tbl not in tables or (child_tbl, child_col) in covered_set:
                     continue
 
                 pk_col = self._get_primary_key(conn, child_tbl)
@@ -573,6 +661,85 @@ class IntegrityScanner:
                         "invalid_value": str(r["fk_val"]),
                         "description": f"Referential integrity failure: Child record in '{child_tbl}' ({pk_col}={r['pk_val']}) references missing parent in '{parent_tbl}' ({parent_col}={r['fk_val']})."
                     })
+        return issues
+
+    def _scan_system_tables(self, conn, scan_id: str) -> List[Dict[str, Any]]:
+        """
+        Validates internal system tables (integrity_rules, scan_runs, integrity_issues)
+        using dedicated system health assertions, completely separate from business domain rules.
+        """
+        issues = []
+        try:
+            with conn.cursor() as cur:
+                # 1. Validate integrity_rules: check for duplicate rule codes
+                cur.execute("""
+                    SELECT rule_code, COUNT(*) as cnt, GROUP_CONCAT(rule_id) as ids
+                    FROM integrity_rules
+                    GROUP BY rule_code
+                    HAVING COUNT(*) > 1
+                """)
+                for r in cur.fetchall():
+                    issues.append({
+                        "issue_id": f"SYS-RULE-{uuid.uuid4().hex[:8].upper()}",
+                        "scan_id": scan_id,
+                        "rule_id": None,
+                        "rule_code": "SYS_DUPLICATE_RULE_CODE",
+                        "category": "SYSTEM_INTEGRITY",
+                        "severity": "HIGH",
+                        "table_name": "integrity_rules",
+                        "record_id": str(r["ids"].split(",")[1]),
+                        "column_name": "rule_code",
+                        "invalid_value": r["rule_code"],
+                        "description": f"System inconsistency: Duplicate rule_code '{r['rule_code']}' detected in integrity_rules."
+                    })
+
+                # 2. Validate integrity_rules: check that target_table actually exists in INFORMATION_SCHEMA
+                cur.execute("""
+                    SELECT r.rule_id, r.rule_code, r.target_table
+                    FROM integrity_rules r
+                    LEFT JOIN information_schema.TABLES t 
+                      ON t.TABLE_SCHEMA = DATABASE() AND t.TABLE_NAME = r.target_table
+                    WHERE t.TABLE_NAME IS NULL
+                """)
+                for r in cur.fetchall():
+                    issues.append({
+                        "issue_id": f"SYS-RULE-{uuid.uuid4().hex[:8].upper()}",
+                        "scan_id": scan_id,
+                        "rule_id": r["rule_id"],
+                        "rule_code": "SYS_ORPHAN_RULE_TARGET",
+                        "category": "SYSTEM_INTEGRITY",
+                        "severity": "MEDIUM",
+                        "table_name": "integrity_rules",
+                        "record_id": str(r["rule_id"]),
+                        "column_name": "target_table",
+                        "invalid_value": r["target_table"],
+                        "description": f"Configured rule '{r['rule_code']}' targets non-existent table '{r['target_table']}'."
+                    })
+
+                # 3. Check for stale crashed scan_runs stuck in RUNNING for over 2 hours
+                cur.execute("""
+                    SELECT scan_id, start_time
+                    FROM scan_runs
+                    WHERE status = 'RUNNING'
+                      AND scan_id != %s
+                      AND start_time < DATE_SUB(NOW(), INTERVAL 2 HOUR)
+                """, (scan_id,))
+                for r in cur.fetchall():
+                    issues.append({
+                        "issue_id": f"SYS-SCAN-{uuid.uuid4().hex[:8].upper()}",
+                        "scan_id": scan_id,
+                        "rule_id": None,
+                        "rule_code": "SYS_STALE_SCAN_RUN",
+                        "category": "SYSTEM_INTEGRITY",
+                        "severity": "LOW",
+                        "table_name": "scan_runs",
+                        "record_id": str(r["scan_id"]),
+                        "column_name": "status",
+                        "invalid_value": "RUNNING",
+                        "description": f"Stale scan run '{r['scan_id']}' has been in RUNNING state since {r['start_time']} (possible prior process crash)."
+                    })
+        except Exception as e:
+            logger.warning(f"System table validation skipped due to schema state: {e}")
         return issues
 
     def _generate_recommendation(self, issue: Dict[str, Any]) -> Dict[str, Any]:
@@ -616,11 +783,12 @@ class IntegrityScanner:
             reversible = True
 
         elif cat == "DOMAIN_VIOLATION":
-            if "marks" in col.lower() or "grade" in col.lower():
+            c_low = col.lower()
+            if any(k in c_low for k in ["marks", "grade", "price", "stock", "amount", "quantity"]):
                 strategy = "SET_DEFAULT"
-                action = f"Clamp score to standard range or flag for instructor verification (current value: {val})."
-                reason = "Grade score falls outside valid 0.00-100.00 scale."
-                impact = f"Corrects score in {table} row {pk}."
+                action = f"Clamp or correct column '{col}' to standard positive domain range (current value: {val})."
+                reason = f"Numerical value {val} falls outside standard positive business range."
+                impact = f"Corrects {col} in {table} row {pk}."
                 risk = "MEDIUM"
                 reversible = True
             else:
@@ -630,6 +798,13 @@ class IntegrityScanner:
                 impact = f"Logs warning and leaves data unchanged until explicit human review."
                 risk = "LOW"
                 reversible = False
+        elif cat == "SYSTEM_INTEGRITY":
+            strategy = "MANUAL_INTERVENTION"
+            action = f"Review system catalog entry for {table} (record {pk})."
+            reason = "Internal engine configuration inconsistency detected."
+            impact = "No user business data affected; internal catalog alignment required."
+            risk = "LOW"
+            reversible = False
         else:
             strategy = "MANUAL_INTERVENTION"
             action = "Request database administrator review."

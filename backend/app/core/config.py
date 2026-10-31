@@ -5,9 +5,9 @@ from typing import Optional
 class Settings(BaseSettings):
     DB_HOST: str = "127.0.0.1"
     DB_PORT: int = 3306
-    DB_NAME: str = "self_healing_db"
+    DB_NAME: str = "self_healing_test_db"
     DB_USER: str = "root"
-    DB_PASSWORD: str = "root123"
+    DB_PASSWORD: str = ""
     DB_CHARSET: str = "utf8mb4"
     
     APP_ENV: str = "development"

@@ -1,4 +1,5 @@
 import pytest
+from backend.app.core.config import settings
 from backend.app.database.connection import test_database_connection as check_db_conn, validate_identifier
 
 def test_validate_identifier_safe():
@@ -20,5 +21,5 @@ def test_mysql_connection_diagnostics(mysql_available):
     status = check_db_conn()
     assert status["connected"] is True
     assert status["database_exists"] is True
-    assert status["database_name"] == "self_healing_db"
+    assert status["database_name"] == settings.DB_NAME
     assert status["table_count"] >= 10

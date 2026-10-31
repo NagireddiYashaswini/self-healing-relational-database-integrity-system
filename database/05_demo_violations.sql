@@ -3,9 +3,10 @@
 -- Script 05: Demonstration Violations Injection
 -- Introduces controlled, isolated integrity anomalies for scanning & self-healing
 -- WITHOUT corrupting or disabling InnoDB foreign keys globally.
+-- Database: self_healing_test_db
 -- =============================================================================
 
-USE `self_healing_db`;
+USE `self_healing_test_db`;
 
 -- 1. STAGING TABLE ANOMALIES (Orphan records, duplicates, domain range, invalid enums)
 TRUNCATE TABLE `staging_enrollments`;
@@ -33,7 +34,7 @@ VALUES
     -- Violation 6: Domain Enum Violation (Status = 'SUSPENDED', not in allowed set)
     (8, 'EXT-1008', 106, 3, 'ananya.roy@univ.edu', '2026-09-01', 85.00, 'SUSPENDED', 'Domain violation: Invalid status code');
 
--- 2. STUDENT PROFILE ANOMALIES (Duplicate email, domain age, invalid GPA, malformed email)
+-- 2. STUDENT PROFILE ANOMALIES (Duplicate email, domain age, invalid GPA, malformed email, empty name)
 -- Remove any previous demo violation records (IDs 200+)
 DELETE FROM `students` WHERE `student_id` >= 200;
 
@@ -49,4 +50,7 @@ VALUES
     (203, 'Alex Malformed', 'alex.malformed@no-tld', 22, 3.10, 2, 2023),
 
     -- Violation 10: Mandatory Name Missing / Empty
-    (204, '', 'ghost.name@univ.edu', 21, 2.90, 3, 2024);
+    (204, '', 'ghost.name@univ.edu', 21, 2.90, 3, 2024),
+
+    -- Violation 11: Duplicate Candidate Key Email (Collides with canonical student 101: ravi.kumar@univ.edu)
+    (205, 'Ravi Duplicate', 'ravi.kumar@univ.edu', 22, 3.50, 1, 2024);

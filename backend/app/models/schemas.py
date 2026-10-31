@@ -193,6 +193,7 @@ class RepairPreviewRequest(BaseModel):
     issue_id: str
     strategy: Optional[RepairStrategyEnum] = None
     repair_parameters: Optional[Dict[str, Any]] = None
+    admin_provided_value: Optional[str] = None
 
 class RepairPreviewResponse(BaseModel):
     issue_id: str
@@ -204,10 +205,22 @@ class RepairPreviewResponse(BaseModel):
     before_state: Dict[str, Any]
     after_state: Dict[str, Any]
     dependent_tables: List[str]
+    direct_children: List[str] = []
+    downstream_tables: List[str] = []
+    has_dependent_records: bool = False
+    matching_child_records_count: int = 0
+    foreign_key_consequences: Optional[str] = None
     sql_preview: List[str]
     is_destructive: bool
     requires_confirmation: bool
     warning: Optional[str] = None
+    requires_admin_input: bool = False
+    input_field_name: Optional[str] = None
+    input_field_type: Optional[str] = None
+    input_field_max_length: Optional[int] = None
+    input_field_nullable: Optional[bool] = None
+    validation_error: Optional[str] = None
+    row_version_token: Optional[str] = None
 
 class RepairExecuteRequest(BaseModel):
     issue_id: str
@@ -215,6 +228,8 @@ class RepairExecuteRequest(BaseModel):
     repair_parameters: Optional[Dict[str, Any]] = None
     confirmed: bool = False
     operator: str = "ADMIN_USER"
+    admin_provided_value: Optional[str] = None
+    row_version_token: Optional[str] = None
 
 class RepairExecutionModel(BaseModel):
     execution_id: str
