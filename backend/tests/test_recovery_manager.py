@@ -17,15 +17,25 @@ def test_recovery_checkpoint_and_restoration_lifecycle(mysql_available):
         pytest.skip(f"Integration test requires active MySQL database '{settings.DB_NAME}'")
 
     # Step 1: Create checkpoint
+    from backend.app.database.connection import get_connection
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SHOW TABLES;")
+            tables = [list(r.values())[0].lower() for r in cur.fetchall()]
+    finally:
+        conn.close()
+    
+    target_table = "categories" if "categories" in tables else "departments"
     ckpt = None
     try:
         ckpt = RecoveryManager.create_checkpoint(
-            target_table="categories",
-            checkpoint_name="Automated Test Categories Checkpoint",
+            target_table=target_table,
+            checkpoint_name=f"Automated Test {target_table.capitalize()} Checkpoint",
             checkpoint_type="MANUAL"
         )
         assert ckpt["checkpoint_id"].startswith("CKPT-")
-        assert ckpt["target_table"] == "categories"
+        assert ckpt["target_table"] == target_table
         assert ckpt["rows_captured"] >= 4
 
         # Step 2: List checkpoints
@@ -38,7 +48,7 @@ def test_recovery_checkpoint_and_restoration_lifecycle(mysql_available):
             operator="PYTEST_RUNNER"
         )
         assert res["status"] == "RESTORED"
-        assert res["target_table"] == "categories"
+        assert res["target_table"] == target_table
         assert res["verified"] is True
     finally:
         if ckpt and ckpt.get("checkpoint_id"):

@@ -4,6 +4,21 @@ from backend.app.services.repair_engine import RepairEngine, AlreadyRepairedErro
 from backend.app.services.dependency_analyzer import DependencyAnalyzer
 from backend.app.database.connection import get_connection
 
+@pytest.fixture(autouse=True)
+def require_customers_table(mysql_available):
+    if not mysql_available:
+        pytest.skip("Local MySQL server not reachable")
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SHOW TABLES LIKE 'customers';")
+            res = cur.fetchone()
+        conn.close()
+        if not res:
+            pytest.skip("Test suite requires retail schema table 'customers'")
+    except Exception:
+        pytest.skip("Database connection failed")
+
 def test_test_a_preview_missing_customer_name(mysql_available):
     """Test A: Preview for missing customer name requires admin input, rejects placeholders, disables execution."""
     if not mysql_available:

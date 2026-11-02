@@ -7,11 +7,18 @@ def test_repair_preview(mysql_available):
         pytest.skip("Local MySQL server not reachable")
     
     # Ensure scan has run so we have an issue
+    from backend.app.database.connection import get_connection
     scanner = IntegrityScanner()
-    scan_res = scanner.run_scan(scan_type="TABLE", target_tables=["orders"], operator="TEST")
+    conn = get_connection()
+    try:
+        tables = scanner.discover_tables(conn)
+    finally:
+        conn.close()
+    scan_tables = ["orders"] if "orders" in tables else ["staging_enrollments"]
+    scan_res = scanner.run_scan(scan_type="TABLE", target_tables=scan_tables, operator="TEST")
     
     if scan_res["issues_found"] == 0:
-        pytest.skip("No orders issues found to preview")
+        pytest.skip("No issues found to preview")
         
     issue = scan_res["issues"][0]
     engine = RepairEngine()
@@ -41,6 +48,12 @@ def test_missing_record_handling_and_auto_resolution(mysql_available):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
+            cur.execute("SHOW TABLES;")
+            tables = [list(r.values())[0].lower() for r in cur.fetchall()]
+            target_table = "orders" if "orders" in tables else "staging_enrollments"
+            rule_code = "RULE_ORPHAN_ORDERS_CUSTOMER" if target_table == "orders" else "RULE_ORPHAN_STAGING_COURSE"
+            col_name = "customer_id" if target_table == "orders" else "course_id"
+
             cur.execute("DELETE FROM repair_recommendations WHERE issue_id = 'TEST-ISSUE-MISSING'")
             cur.execute("DELETE FROM integrity_issues WHERE issue_id = 'TEST-ISSUE-MISSING'")
             # Create a test issue for a non-existent row
@@ -49,11 +62,11 @@ def test_missing_record_handling_and_auto_resolution(mysql_available):
                     issue_id, scan_id, rule_id, rule_code, category, severity,
                     table_name, record_id, column_name, invalid_value, description, status
                 ) VALUES (
-                    'TEST-ISSUE-MISSING', 'SCAN-TEST', 1, 'RULE_ORPHAN_ORDERS_CUSTOMER',
-                    'ORPHAN', 'HIGH', 'orders', '999999', 'customer_id', '999',
+                    'TEST-ISSUE-MISSING', 'SCAN-TEST', 1, %s,
+                    'ORPHAN', 'HIGH', %s, '999999', %s, '999',
                     'Test orphan on non-existent record', 'OPEN'
                 )
-            """)
+            """, (rule_code, target_table, col_name))
             cur.execute("""
                 INSERT INTO repair_recommendations (
                     issue_id, strategy, problem_description, proposed_action,

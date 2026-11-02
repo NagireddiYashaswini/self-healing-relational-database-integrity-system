@@ -21,7 +21,7 @@ export const DependencyVisualizerPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [graphData, setGraphData] = useState(null);
-  const [selectedTable, setSelectedTable] = useState('customers');
+  const [selectedTable, setSelectedTable] = useState('departments');
   const [tableNeighborhood, setTableNeighborhood] = useState(null);
   const [neighborhoodLoading, setNeighborhoodLoading] = useState(false);
 

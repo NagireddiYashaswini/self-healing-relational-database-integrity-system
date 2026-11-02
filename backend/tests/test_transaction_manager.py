@@ -14,7 +14,12 @@ def test_transaction_demo_commit(mysql_available):
         conn = get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM customers WHERE customer_id >= 9 OR email LIKE 'tx_%'")
+                cur.execute("SHOW TABLES;")
+                tables = [list(r.values())[0].lower() for r in cur.fetchall()]
+                if "customers" in tables:
+                    cur.execute("DELETE FROM customers WHERE customer_id >= 9 OR email LIKE 'tx_%'")
+                elif "staging_enrollments" in tables:
+                    cur.execute("DELETE FROM staging_enrollments WHERE staging_id >= 9 OR student_email LIKE 'tx_%'")
             conn.commit()
         finally:
             conn.close()
@@ -41,7 +46,12 @@ def test_transaction_demo_savepoint(mysql_available):
         conn = get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM customers WHERE customer_id >= 9 OR email LIKE 'tx_%'")
+                cur.execute("SHOW TABLES;")
+                tables = [list(r.values())[0].lower() for r in cur.fetchall()]
+                if "customers" in tables:
+                    cur.execute("DELETE FROM customers WHERE customer_id >= 9 OR email LIKE 'tx_%'")
+                elif "staging_enrollments" in tables:
+                    cur.execute("DELETE FROM staging_enrollments WHERE staging_id >= 9 OR student_email LIKE 'tx_%'")
             conn.commit()
         finally:
             conn.close()

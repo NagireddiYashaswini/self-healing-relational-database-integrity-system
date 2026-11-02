@@ -120,13 +120,18 @@ DBMS PROJECT/Database_Management_System/
 
 ---
 
-### Step 1: Database Setup via XAMPP MySQL
-Ensure MySQL is started in your XAMPP Control Panel.
+### Step 1: Database Setup via MySQL / XAMPP
+Ensure MySQL is running (e.g., click **Start** next to MySQL in the XAMPP Control Panel).
 
-#### Option A: Import via MySQL Command Line Client (PowerShell)
+#### Option A: Automated 1-Click Python Setup (Recommended)
+After installing backend Python dependencies:
+```bash
+python setup_database.py
+```
+This wizard will automatically configure `backend/.env`, connect to MySQL, execute all 5 database scripts in order, and verify all 16 tables.
+
+#### Option B: Import via MySQL Command Line Client (PowerShell)
 ```powershell
-cd "d:\DBMS PROJECT\Database_Management_System"
-
 # Execute SQL scripts sequentially:
 cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 < database\01_create_database.sql"
 cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 self_healing_test_db < database\02_create_tables.sql"
@@ -135,7 +140,7 @@ cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 self_healing_test_db <
 cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 self_healing_test_db < database\05_demo_violations.sql"
 ```
 
-#### Option B: Import via phpMyAdmin GUI
+#### Option C: Import via phpMyAdmin GUI
 1. Open `http://localhost/phpmyadmin/` in your browser.
 2. Click **Import** and upload `database/01_create_database.sql`.
 3. Select `self_healing_test_db` from the left sidebar.

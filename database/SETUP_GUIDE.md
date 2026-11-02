@@ -27,13 +27,26 @@ This guide provides step-by-step instructions to set up, initialize, and run the
 
 ## 3. Create the Database & Execute Initialization Scripts
 
-### Method A: Automated PowerShell Import (Fastest & Recommended)
+### Method A: Automated 1-Click Python Setup (Recommended & Easiest)
 
-Open a PowerShell terminal in the project root:
+After installing Python dependencies, run the setup wizard from the project root:
+
+```bash
+python setup_database.py
+```
+This script will automatically:
+- Create `backend/.env` if not already present.
+- Connect to your MySQL server (prompting for password if one is set).
+- Run all 5 SQL scripts sequentially in transaction-safe order.
+- Verify that all 16 InnoDB tables and immutability triggers are installed.
+
+---
+
+### Method B: Automated PowerShell / Command Line Import
+
+Open a terminal in the project root:
 
 ```powershell
-cd "d:\DBMS PROJECT\Database_Management_System"
-
 # Step 1: Create the new database (self_healing_test_db)
 cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 < database\01_create_database.sql"
 
@@ -52,7 +65,7 @@ cmd /c "C:\xampp\mysql\bin\mysql.exe -u root -h 127.0.0.1 self_healing_test_db <
 
 ---
 
-### Method B: Manual GUI Import via phpMyAdmin
+### Method C: Manual GUI Import via phpMyAdmin
 
 1. In phpMyAdmin, click on the **Import** tab on the top navigation bar.
 2. Click **Choose File** and select `database/01_create_database.sql`.
