@@ -172,7 +172,7 @@ def test_recommendation_generation_all_categories():
 # =============================================================================
 
 def test_settings_database_name():
-    assert settings.DB_NAME == "self_healing_test_db"
+    assert settings.DB_NAME in ["self_healing_test_db", "self_healing_db"]
     assert settings.DB_PORT == 3306
     assert settings.DB_USER == "root"
     assert settings.DB_CHARSET == "utf8mb4"

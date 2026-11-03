@@ -72,10 +72,10 @@ class RuleTypeEnum(str, Enum):
     RELATIONAL_CONSISTENCY = "RELATIONAL_CONSISTENCY"
 
 class SeverityEnum(str, Enum):
-    LOW = "LOW"
-    MEDIUM = "MEDIUM"
-    HIGH = "HIGH"
     CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    LOW = "LOW"
+    MEDIUM = "HIGH"
 
 class IssueStatusEnum(str, Enum):
     OPEN = "OPEN"
@@ -167,12 +167,13 @@ class IssueStatusUpdateRequest(BaseModel):
 
 # --- Repair Models ---
 class RepairStrategyEnum(str, Enum):
-    RESTORE_PARENT = "RESTORE_PARENT"
-    MAP_PARENT = "MAP_PARENT"
     QUARANTINE = "QUARANTINE"
+    MAP_PARENT = "MAP_PARENT"
     DELETE_RECORD = "DELETE_RECORD"
-    MERGE_DUPLICATE = "MERGE_DUPLICATE"
     SET_DEFAULT = "SET_DEFAULT"
+    RESTORE_PARENT = "RESTORE_PARENT"
+    MERGE_DUPLICATION = "MERGE_DUPLICATION"
+    MERGE_DUPLICATE = "MERGE_DUPLICATE"
     MANUAL_INTERVENTION = "MANUAL_INTERVENTION"
 
 class RepairRecommendationModel(BaseModel):
@@ -325,3 +326,20 @@ class AuditLogModel(BaseModel):
     before_values_json: Optional[str] = None
     after_values_json: Optional[str] = None
     error_message: Optional[str] = None
+
+
+# --- Ingestion Models ---
+class IngestionRecordRequest(BaseModel):
+    table_name: str
+    record_data: Dict[str, Any]
+    external_ref: Optional[str] = None
+
+class IngestionResponse(BaseModel):
+    success: bool
+    status: str # 'COMMITTED_TO_PRODUCTION', 'REJECTED_TO_QUARANTINE'
+    staging_id: int
+    production_pk: Optional[Any] = None
+    quarantine_id: Optional[int] = None
+    target_table: str
+    message: str
+    validation_errors: List[str] = []

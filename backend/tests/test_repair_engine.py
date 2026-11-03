@@ -78,11 +78,10 @@ def test_missing_record_handling_and_auto_resolution(mysql_available):
             """)
         conn.commit()
 
-        # Preview on non-existent row should raise ValueError and mark issue REPAIRED
-        with pytest.raises(ValueError) as excinfo:
-            engine.get_repair_preview(issue_id="TEST-ISSUE-MISSING")
-        assert "does not exist in the database" in str(excinfo.value)
-        assert "REPAIRED" in str(excinfo.value)
+        # Preview on non-existent row returns ALREADY_REPAIRED preview and marks issue REPAIRED
+        preview = engine.get_repair_preview(issue_id="TEST-ISSUE-MISSING")
+        assert preview["status"] == "ALREADY_REPAIRED"
+        assert "does not exist in the database" in preview["warning"]
 
         # Check DB to confirm it was marked REPAIRED
         with conn.cursor() as cur:

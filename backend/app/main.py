@@ -19,6 +19,7 @@ from backend.app.api.transactions import router as transactions_router
 from backend.app.api.recovery import router as recovery_router
 from backend.app.api.audit import router as audit_router
 from backend.app.api.rules import router as rules_router
+from backend.app.api.ingestion import router as ingestion_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -92,6 +93,7 @@ app.include_router(transactions_router, prefix=settings.API_PREFIX)
 app.include_router(recovery_router, prefix=settings.API_PREFIX)
 app.include_router(audit_router, prefix=settings.API_PREFIX)
 app.include_router(rules_router, prefix=settings.API_PREFIX)
+app.include_router(ingestion_router, prefix=settings.API_PREFIX)
 
 # Standardized Error Handling
 @app.exception_handler(StarletteHTTPException)

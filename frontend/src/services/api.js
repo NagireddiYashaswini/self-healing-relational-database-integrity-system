@@ -15,7 +15,7 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Network request failed';
+    const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.response?.data?.error || error.message || 'Network request failed';
     console.error('API Request Error:', errorMsg);
     const customError = new Error(errorMsg);
     customError.status = error.response?.status;
@@ -86,6 +86,12 @@ export const rulesApi = {
   updateRule: (ruleId, payload) => api.patch(`/rules/${ruleId}`, payload),
   testRule: (ruleId) => api.post(`/rules/${ruleId}/test`),
   deleteRule: (ruleId) => api.delete(`/rules/${ruleId}`),
+};
+
+export const ingestionApi = {
+  getTables: () => api.get('/ingestion/tables'),
+  getSchema: (tableName) => api.get(`/ingestion/schema/${tableName}`),
+  insertRecord: (payload) => api.post('/ingestion/insert', payload),
 };
 
 export default api;

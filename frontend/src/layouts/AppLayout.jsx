@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
+  UploadCloud,
   LayoutDashboard,
   Database,
   ScanSearch,
@@ -26,27 +27,21 @@ import { Button } from '../components/common/Button';
 
 const NAV_GROUPS = [
   {
-    title: 'OBSERVABILITY & SCHEMA',
+    title: 'CORE RECOVERY ENGINE',
     items: [
       { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/scanner', label: 'Database Integrity Scanner', icon: ScanSearch },
+      { path: '/dependencies', label: 'Dependency Graph / DAG', icon: Network },
+      { path: '/recovery', label: 'Recovery Center', icon: Wrench },
+      { path: '/ingestion', label: 'Data Ingestion / Add Records', icon: UploadCloud },
+    ]
+  },
+  {
+    title: 'DATABASE UTILITIES & LOGS',
+    items: [
       { path: '/explorer', label: 'Database Explorer', icon: Database },
-      { path: '/scanner', label: 'Integrity Scanner', icon: ScanSearch },
-      { path: '/dependencies', label: 'Dependency Analysis', icon: Network },
-      { path: '/issues', label: 'Issue Management', icon: AlertTriangle },
-    ]
-  },
-  {
-    title: 'SELF-HEALING & SAFETY',
-    items: [
-      { path: '/repairs', label: 'Repair Center', icon: Wrench },
       { path: '/simulator', label: 'Transaction Simulator', icon: Activity },
-      { path: '/recovery', label: 'Recovery & Checkpoints', icon: History },
-    ]
-  },
-  {
-    title: 'AUDIT & CONFIGURATION',
-    items: [
-      { path: '/audit', label: 'Query History & Logs', icon: FileText },
+      { path: '/audit', label: 'Query History & Audit Logs', icon: FileText },
       { path: '/rules', label: 'Rules Configuration', icon: Sliders },
       { path: '/settings', label: 'Settings & MySQL', icon: Settings },
     ]
@@ -97,11 +92,10 @@ export const AppLayout = () => {
     if (p === '/') return { section: 'Monitoring', title: 'Dashboard' };
     if (p === '/explorer') return { section: 'Schema', title: 'Database Explorer' };
     if (p === '/scanner') return { section: 'Integrity', title: 'Integrity Scanner' };
-    if (p === '/dependencies') return { section: 'Topology', title: 'Dependency Analysis' };
-    if (p === '/issues') return { section: 'Issues', title: 'Issue Management' };
-    if (p === '/repairs') return { section: 'Operations', title: 'Repair Center' };
+    if (p === '/dependencies') return { section: 'Topology', title: 'Dependency Graph / DAG' };
+    if (p === '/recovery' || p === '/repairs') return { section: 'Self-Healing', title: 'Recovery Center' };
+    if (p === '/ingestion') return { section: 'Ingestion', title: 'Data Ingestion & Staging' };
     if (p === '/simulator') return { section: 'ACID', title: 'Transaction Simulator' };
-    if (p === '/recovery') return { section: 'Backups', title: 'Recovery & Checkpoints' };
     if (p === '/audit') return { section: 'Traceability', title: 'Query History & Audit' };
     if (p === '/rules') return { section: 'Rules', title: 'Rules Configuration' };
     if (p === '/settings') return { section: 'System', title: 'Settings & Status' };

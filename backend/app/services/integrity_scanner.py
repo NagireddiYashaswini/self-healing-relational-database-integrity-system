@@ -20,7 +20,7 @@ TABLE_RECOVERY = {'recovery_checkpoints'}
 
 # Fallback default tables if metadata lookup is unavailable
 DEFAULT_SCAN_TABLES = [
-    "departments", "instructors", "courses", "students", "enrollments", "staging_enrollments"
+    "departments", "instructors", "courses", "students", "enrollments", "classrooms"
 ]
 
 def classify_table(table_name: str) -> str:
@@ -80,12 +80,11 @@ class IntegrityScanner:
 
     def _discover_scannable_tables(self, conn) -> List[str]:
         """
-        Discovers scannable business and staging tables.
-        Explicitly excludes audit, recovery, and system engine tables from business rule evaluation.
+        Discovers scannable core business tables.
+        Strictly covers the six business tables: departments, instructors, courses, students, enrollments, classrooms.
+        Explicitly excludes staging, audit, recovery, and system engine tables.
         """
-        tbls = self.discover_tables(conn)
-        scannable = tbls["business"] + tbls["staging"]
-        return scannable if scannable else DEFAULT_SCAN_TABLES
+        return list(DEFAULT_SCAN_TABLES)
 
     def run_scan(
         self,
@@ -151,10 +150,8 @@ class IntegrityScanner:
             fk_issues = self._scan_declared_foreign_keys(conn, scan_id, tables_to_scan, rule_fk_covered)
             detected_issues.extend(fk_issues)
 
-            # Step 5b: For FULL scans, perform appropriate system table validation (separate from business rules)
-            if scan_type == "FULL":
-                sys_issues = self._scan_system_tables(conn, scan_id)
-                detected_issues.extend(sys_issues)
+            # Step 5b: Full scans strictly target the 6 core business tables
+            # System, staging, and audit tables are strictly excluded from business scanning
 
             # Step 6: Deduplicate issues by (table_name, record_id, column_name, category)
             unique_issues_map = {}
@@ -171,7 +168,11 @@ class IntegrityScanner:
             # Step 7: Persist detected issues and recommendations
             critical_count = sum(1 for i in final_issues if i["severity"] == "CRITICAL")
             high_count = sum(1 for i in final_issues if i["severity"] == "HIGH")
-            medium_count = sum(1 for i in final_issues if i["severity"] == "MEDIUM")
+            # Ensure all final issues have strictly CRITICAL, HIGH, LOW severity
+            for i in final_issues:
+                if i.get("severity") not in ["CRITICAL", "HIGH", "LOW"]:
+                    i["severity"] = "HIGH"
+            medium_count = 0
             low_count = sum(1 for i in final_issues if i["severity"] == "LOW")
 
             with conn.cursor() as cur:
@@ -588,8 +589,8 @@ class IntegrityScanner:
             # 4. DOMAIN CHECK
             elif rule_type == "DOMAIN_CHECK":
                 target_col = validate_identifier(rule["target_column"])
-                min_val = params.get("min_value")
-                max_val = params.get("max_value")
+                min_val = params.get("min_value") if params.get("min_value") is not None else params.get("min")
+                max_val = params.get("max_value") if params.get("max_value") is not None else params.get("max")
                 allowed_values = params.get("allowed_values")
                 regex_pattern = params.get("regex_pattern")
 
@@ -881,7 +882,7 @@ class IntegrityScanner:
             "proposed_action": action,
             "reason": reason,
             "expected_impact": impact,
-            "risk_level": issue.get("severity", "MEDIUM"),
+            "risk_level": "HIGH" if issue.get("severity") == "MEDIUM" else issue.get("severity", "HIGH"),
             "is_reversible": reversible,
             "requires_approval": True
         }

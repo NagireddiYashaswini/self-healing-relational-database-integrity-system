@@ -17,48 +17,39 @@ class DependencyAnalyzer:
         G = nx.DiGraph()
 
         try:
+            CORE_TABLES = {"departments", "instructors", "courses", "students", "enrollments", "classrooms"}
             with conn.cursor() as cur:
-                # 1. Fetch all tables
+                # 1. Fetch only core business tables
                 cur.execute("""
                     SELECT TABLE_NAME, ENGINE, TABLE_ROWS
                     FROM information_schema.TABLES
                     WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME IN ('departments', 'instructors', 'courses', 'students', 'enrollments', 'classrooms')
                 """)
-                tables = cur.fetchall()
+                tables = {r["TABLE_NAME"]: r for r in cur.fetchall()}
 
-                # Fetch issue counts per table
+                # Fetch issue counts per table for active issues
                 cur.execute("""
                     SELECT table_name, COUNT(*) AS issue_count
                     FROM integrity_issues
                     WHERE status IN ('OPEN', 'REVIEWED', 'APPROVED')
+                      AND table_name IN ('departments', 'instructors', 'courses', 'students', 'enrollments', 'classrooms')
                     GROUP BY table_name
                 """)
                 issue_counts = {r["table_name"]: r["issue_count"] for r in cur.fetchall()}
 
-                for t in tables:
-                    t_name = t["TABLE_NAME"]
-                    if t_name.startswith("staging_") or t_name.startswith("legacy_"):
-                        table_type = "STAGING"
-                    elif t_name == "quarantine_records":
-                        table_type = "QUARANTINE"
-                    elif t_name in ["integrity_rules", "scan_runs", "integrity_issues", 
-                                    "repair_recommendations", "repair_executions", 
-                                    "audit_logs", "transaction_logs", "recovery_checkpoints", 
-                                    "database_metadata"]:
-                        table_type = "SYSTEM"
-                    else:
-                        table_type = "BUSINESS"
-
+                for t_name in ["departments", "instructors", "courses", "students", "enrollments", "classrooms"]:
+                    t_info = tables.get(t_name, {})
                     G.add_node(
                         t_name,
                         id=t_name,
                         label=t_name,
-                        table_type=table_type,
-                        row_count=t["TABLE_ROWS"] or 0,
+                        table_type="BUSINESS",
+                        row_count=t_info.get("TABLE_ROWS") or 0,
                         issue_count=issue_counts.get(t_name, 0)
                     )
 
-                # 2. Fetch declared foreign keys from INFORMATION_SCHEMA
+                # 2. Fetch declared foreign keys between the 6 core business tables
                 cur.execute("""
                     SELECT 
                         TABLE_NAME AS child_table,
@@ -69,40 +60,23 @@ class DependencyAnalyzer:
                     FROM information_schema.KEY_COLUMN_USAGE
                     WHERE TABLE_SCHEMA = DATABASE()
                       AND REFERENCED_TABLE_NAME IS NOT NULL
+                      AND TABLE_NAME IN ('departments', 'instructors', 'courses', 'students', 'enrollments', 'classrooms')
+                      AND REFERENCED_TABLE_NAME IN ('departments', 'instructors', 'courses', 'students', 'enrollments', 'classrooms')
                 """)
                 fk_rows = cur.fetchall()
 
                 for fk in fk_rows:
                     p = fk["parent_table"]
                     c = fk["child_table"]
-                    # Edge direction: Parent -> Child
-                    G.add_edge(
-                        p, c,
-                        from_node=p,
-                        to_node=c,
-                        label=f"{c}.{fk['child_column']} -> {p}.{fk['parent_column']}",
-                        relationship_type="PHYSICAL_FK",
-                        constraint_name=fk["constraint_name"]
-                    )
-
-                # 3. Also include logical relationships from active integrity_rules (e.g. staging tables)
-                cur.execute("""
-                    SELECT target_table, target_column, parent_table, parent_column, rule_code
-                    FROM integrity_rules
-                    WHERE rule_type = 'ORPHAN' AND parent_table IS NOT NULL AND is_enabled = TRUE
-                """)
-                logical_rules = cur.fetchall()
-                for lr in logical_rules:
-                    p = lr["parent_table"]
-                    c = lr["target_table"]
-                    if not G.has_edge(p, c):
+                    if p in CORE_TABLES and c in CORE_TABLES:
+                        # Edge direction: Parent -> Child
                         G.add_edge(
                             p, c,
                             from_node=p,
                             to_node=c,
-                            label=f"{c}.{lr['target_column']} -> {p}.{lr['parent_column']} (Logical)",
-                            relationship_type="LOGICAL_RULE",
-                            constraint_name=lr["rule_code"]
+                            label=f"{c}.{fk['child_column']} -> {p}.{fk['parent_column']}",
+                            relationship_type="PHYSICAL_FK",
+                            constraint_name=fk["constraint_name"]
                         )
 
             # Analyze graph properties

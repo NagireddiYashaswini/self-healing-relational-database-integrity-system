@@ -142,7 +142,7 @@ export const DependencyVisualizerPage = () => {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => navigate(`/issues?table_name=${tableNeighborhood.table_name}`)}
+                  onClick={() => navigate(`/recovery?table=${tableNeighborhood.table_name}`)}
                 >
                   View Issues
                 </Button>

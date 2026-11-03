@@ -86,3 +86,17 @@ ON DUPLICATE KEY UPDATE
     `enrolled_on` = VALUES(`enrolled_on`),
     `grade_marks` = VALUES(`grade_marks`),
     `status` = VALUES(`status`);
+
+-- 6. Classrooms (Clean core relational table)
+INSERT INTO `classrooms` (`classroom_id`, `room_number`, `building`, `capacity`, `dept_id`)
+VALUES 
+    (1, 'CS-101', 'Turing Science Center', 45, 1),
+    (2, 'CS-102', 'Turing Science Center', 60, 1),
+    (3, 'EE-201', 'Faraday Engineering Complex', 50, 2),
+    (4, 'MATH-301', 'Euler Mathematical Sciences', 40, 3),
+    (5, 'MECH-105', 'Carnot Technology Hall', 35, 4)
+ON DUPLICATE KEY UPDATE 
+    `room_number` = VALUES(`room_number`),
+    `building` = VALUES(`building`),
+    `capacity` = VALUES(`capacity`),
+    `dept_id` = VALUES(`dept_id`);

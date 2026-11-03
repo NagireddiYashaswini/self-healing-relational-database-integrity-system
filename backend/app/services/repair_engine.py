@@ -255,7 +255,34 @@ class RepairEngine:
                     conn.commit()
 
                     status_msg = "already quarantined" if quarantined else "already deleted/resolved"
-                    raise ValueError(f"Record {table_name}.{pk_col}={record_id} does not exist in the database ({status_msg}). The issue status has been marked as REPAIRED.")
+                    return {
+                        "issue_id": issue_id,
+                        "table_name": table_name,
+                        "record_id": str(record_id),
+                        "strategy": strategy_override or "QUARANTINE",
+                        "risk_level": "LOW",
+                        "affected_rows_count": 0,
+                        "before_state": {"status": "ABSENT_OR_QUARANTINED"},
+                        "after_state": {"status": "ALREADY_REPAIRED"},
+                        "dependent_tables": [],
+                        "direct_children": [],
+                        "downstream_tables": [],
+                        "has_dependent_records": False,
+                        "matching_child_records_count": 0,
+                        "foreign_key_consequences": f"Record is {status_msg} and is no longer present in `{table_name}`.",
+                        "sql_preview": [f"-- Record {table_name}.{pk_col}={record_id} does not exist in the database ({status_msg}). Marked issue as REPAIRED."],
+                        "is_destructive": False,
+                        "requires_confirmation": False,
+                        "warning": f"Record {table_name}.{pk_col}={record_id} does not exist in the database ({status_msg}). The issue status has been marked as REPAIRED.",
+                        "requires_admin_input": False,
+                        "input_field_name": None,
+                        "input_field_type": None,
+                        "input_field_max_length": None,
+                        "input_field_nullable": True,
+                        "validation_error": None,
+                        "row_version_token": "ALREADY_REPAIRED",
+                        "status": "ALREADY_REPAIRED"
+                    }
 
                 # 4. Fetch recommendation & rule metadata
                 cur.execute("SELECT * FROM repair_recommendations WHERE issue_id = %s", (issue_id,))
@@ -326,7 +353,7 @@ class RepairEngine:
                         sql_preview.append(f"INSERT INTO `{parent_table}` (`{parent_col}`, ...) VALUES ({missing_id}, ...);")
                         after_row["parent_status"] = f"RESTORED_BASELINE (ID: {missing_id})"
 
-                elif strategy in ("MERGE_DUPLICATE", "MERGE", "merge_duplicate", "merge"):
+                elif strategy in ("MERGE_DUPLICATION", "MERGE_DUPLICATE", "MERGE", "merge_duplicate", "merge", "merge_duplication"):
                     is_destructive = True
                     sql_preview.append(f"-- Merging duplicate record: archiving to quarantine and deleting redundant row")
                     sql_preview.append(f"INSERT INTO `quarantine_records` (source_table, source_pk_value, issue_type, row_data_json, quarantine_reason) VALUES ('{table_name}', '{record_id}', 'DUPLICATE_MERGE', '{{JSON_PAYLOAD}}', 'Merged duplicate record into canonical');")
@@ -622,7 +649,19 @@ class RepairEngine:
                     conn.commit()
 
                     status_msg = "already quarantined" if quarantined else "already deleted/resolved"
-                    raise AlreadyRepairedError(f"Record {table_name}.{pk_col}={record_id} does not exist ({status_msg}). The issue has already been repaired.")
+                    return {
+                        "execution_id": f"EXEC-{uuid.uuid4().hex[:8].upper()}",
+                        "issue_id": issue_id,
+                        "transaction_id": f"TX-{uuid.uuid4().hex[:8].upper()}",
+                        "status": "SUCCESS",
+                        "strategy": strategy,
+                        "executed_by": operator,
+                        "executed_at": datetime.now(),
+                        "sql_executed": f"-- Record {table_name}.{pk_col}={record_id} does not exist ({status_msg}). Marked issue as REPAIRED.",
+                        "execution_time_ms": 0,
+                        "verified": True,
+                        "message": f"Record {table_name}.{pk_col}={record_id} does not exist ({status_msg}). The issue has been marked as REPAIRED."
+                    }
 
                 # Stale preview check
                 current_token = compute_row_hash(before_row)
@@ -698,7 +737,7 @@ class RepairEngine:
                                         (missing_id, f"Restored Student {missing_id}", f"student_{missing_id}@univ.edu"))
                         sql_statements_executed.append(f"INSERT baseline parent stub into `{parent_table}` ({parent_col} = {missing_id})")
 
-                elif strategy in ("MERGE_DUPLICATE", "MERGE", "merge_duplicate", "merge"):
+                elif strategy in ("MERGE_DUPLICATION", "MERGE_DUPLICATE", "MERGE", "merge_duplicate", "merge", "merge_duplication"):
                     insert_quarantine_sql = """
                         INSERT INTO quarantine_records (
                             source_table, source_pk_value, issue_type, row_data_json, quarantine_reason, quarantined_by

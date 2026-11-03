@@ -10,7 +10,7 @@ def test_dependency_graph_structure(mysql_available):
     
     assert "nodes" in graph
     assert "edges" in graph
-    assert len(graph["nodes"]) >= 10
+    assert len(graph["nodes"]) == 6
     
     # Check node labels
     node_ids = {n["id"] for n in graph["nodes"]}

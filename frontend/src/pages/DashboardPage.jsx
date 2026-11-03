@@ -320,10 +320,10 @@ export const DashboardPage = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/issues')}
+            onClick={() => navigate('/recovery')}
             className="text-xs text-indigo-600 font-medium"
           >
-            View All Issues <ArrowRight className="w-3 h-3 ml-1" />
+            View in Recovery Center <ArrowRight className="w-3 h-3 ml-1" />
           </Button>
         </div>
 
