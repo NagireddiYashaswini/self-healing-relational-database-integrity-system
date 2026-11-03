@@ -198,6 +198,30 @@ def make_styled_table(data, col_widths, headers=True):
 # Import expanded chapter data generator
 from expand_chapters import expand as get_all_chapters
 
+TOC_DATA = [
+    ["Chapter", "Chapter Title & Topical Coverage", "Target Page"],
+    ["Chapter 1", "The Intuitive Foundation: The 10-Year-Old Guide to Relational Databases", "Page 4"],
+    ["Chapter 2", "Academic Problem Statement, Background & Research Motivation", "Page 6"],
+    ["Chapter 3", "End-to-End System Architecture & Three-Tier Engineering Design", "Page 8"],
+    ["Chapter 4", "Complete Relational Database Specification (All 16 Tables Detailed)", "Page 10"],
+    ["Chapter 5", "Dynamic Schema Metadata Discovery via INFORMATION_SCHEMA", "Page 20"],
+    ["Chapter 6", "Relational Graph Theory & NetworkX Dependency Modeling", "Page 22"],
+    ["Chapter 7", "Cascading Blast Radius Analysis & Deterministic Risk Matrix", "Page 23"],
+    ["Chapter 8", "The Five Anomaly Taxonomies & Relational Algebra Detection Queries", "Page 24"],
+    ["Chapter 9", "The Autonomous Self-Healing Engine & Non-Destructive Previews", "Page 27"],
+    ["Chapter 10", "Cryptographic Row-Version Tokens & Concurrency Control (SHA-256)", "Page 28"],
+    ["Chapter 11", "Transaction Safeguards & ACID Property Implementation", "Page 29"],
+    ["Chapter 12", "Application-Level Recovery Engine & Snapshot Checkpoints", "Page 31"],
+    ["Chapter 13", "Audit Trail Immutability & Sensitive Credential Redaction Triggers", "Page 32"],
+    ["Chapter 14", "Comprehensive Walkthrough of All 11 Frontend Pages & Component Logic", "Page 33"],
+    ["Chapter 15", "Complete REST API Specification & Endpoint Contracts", "Page 45"],
+    ["Chapter 16", "Automated Testing Suite & Verification (All 45 Test Scenarios)", "Page 49"],
+    ["Chapter 17", "Local Deployment, Setup Wizard & Administration Guide", "Page 52"],
+    ["Chapter 18", "Oral Exam & Viva Defense Master Preparation (30 In-Depth Q&As)", "Page 54"],
+    ["Chapter 19", "Technical Limitations, Security Hardening & Future Scope", "Page 59"],
+    ["Chapter 20", "Appendix, Project Glossary & File Manifest", "Page 60"]
+]
+
 def build_pdf(pdf_path, canvas_class):
     doc = SimpleDocTemplate(
         str(pdf_path),
@@ -288,29 +312,7 @@ def build_pdf(pdf_path, canvas_class):
     story.append(Paragraph("Table of Contents", styles['ChapterH1']))
     story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#CBD5E1"), spaceAfter=14))
     
-    toc_data = [
-        ["Chapter", "Chapter Title & Topical Coverage", "Target Page"],
-        ["Chapter 1", "The Intuitive Foundation: The 10-Year-Old Guide to Relational Databases", "Page 4"],
-        ["Chapter 2", "Academic Problem Statement, Background & Research Motivation", "Page 6"],
-        ["Chapter 3", "End-to-End System Architecture & Three-Tier Engineering Design", "Page 8"],
-        ["Chapter 4", "Complete Relational Database Specification (All 16 Tables Detailed)", "Page 10"],
-        ["Chapter 5", "Dynamic Schema Metadata Discovery via INFORMATION_SCHEMA", "Page 17"],
-        ["Chapter 6", "Relational Graph Theory & NetworkX Dependency Modeling", "Page 19"],
-        ["Chapter 7", "Cascading Blast Radius Analysis & Deterministic Risk Matrix", "Page 21"],
-        ["Chapter 8", "The Five Anomaly Taxonomies & Relational Algebra Detection Queries", "Page 23"],
-        ["Chapter 9", "The Autonomous Self-Healing Engine & Non-Destructive Previews", "Page 27"],
-        ["Chapter 10", "Cryptographic Row-Version Tokens & Concurrency Control (SHA-256)", "Page 29"],
-        ["Chapter 11", "Transaction Safeguards & ACID Property Implementation", "Page 31"],
-        ["Chapter 12", "Application-Level Recovery Engine & Snapshot Checkpoints", "Page 34"],
-        ["Chapter 13", "Audit Trail Immutability & Sensitive Credential Redaction Triggers", "Page 36"],
-        ["Chapter 14", "Comprehensive Walkthrough of All 11 Frontend Pages & Component Logic", "Page 38"],
-        ["Chapter 15", "Complete REST API Specification & Endpoint Contracts", "Page 42"],
-        ["Chapter 16", "Automated Testing Suite & Quality Assurance (All 45 Test Scenarios)", "Page 44"],
-        ["Chapter 17", "Local Deployment, Setup Wizard & Administration Guide", "Page 47"],
-        ["Chapter 18", "Oral Exam & Viva Defense Master Preparation (30 In-Depth Q&As)", "Page 49"],
-        ["Chapter 19", "Technical Limitations, Security Hardening & Future Scope", "Page 53"],
-        ["Chapter 20", "Appendix, Project Glossary & File Manifest", "Page 55"]
-    ]
+    toc_data = TOC_DATA
     story.append(make_styled_table(toc_data, [65, 370, 65]))
     story.append(PageBreak())
     
@@ -456,29 +458,7 @@ def build_docx(docx_path):
     # Table of Contents in DOCX
     h_toc = doc.add_heading("Table of Contents", level=1)
     h_toc.runs[0].font.color.rgb = RGBColor(15, 23, 42)
-    toc_data = [
-        ["Chapter", "Chapter Title & Topical Coverage", "Target Page"],
-        ["Chapter 1", "The Intuitive Foundation: The 10-Year-Old Guide to Relational Databases", "Page 4"],
-        ["Chapter 2", "Academic Problem Statement, Background & Research Motivation", "Page 6"],
-        ["Chapter 3", "End-to-End System Architecture & Three-Tier Engineering Design", "Page 8"],
-        ["Chapter 4", "Complete Relational Database Specification (All 16 Tables Detailed)", "Page 10"],
-        ["Chapter 5", "Dynamic Schema Metadata Discovery via INFORMATION_SCHEMA", "Page 17"],
-        ["Chapter 6", "Relational Graph Theory & NetworkX Dependency Modeling", "Page 19"],
-        ["Chapter 7", "Cascading Blast Radius Analysis & Deterministic Risk Matrix", "Page 21"],
-        ["Chapter 8", "The Five Anomaly Taxonomies & Relational Algebra Detection Queries", "Page 23"],
-        ["Chapter 9", "The Autonomous Self-Healing Engine & Non-Destructive Previews", "Page 27"],
-        ["Chapter 10", "Cryptographic Row-Version Tokens & Concurrency Control (SHA-256)", "Page 29"],
-        ["Chapter 11", "Transaction Safeguards & ACID Property Implementation", "Page 31"],
-        ["Chapter 12", "Application-Level Recovery Engine & Snapshot Checkpoints", "Page 34"],
-        ["Chapter 13", "Audit Trail Immutability & Sensitive Credential Redaction Triggers", "Page 36"],
-        ["Chapter 14", "Comprehensive Walkthrough of All 11 Frontend Pages & Component Logic", "Page 38"],
-        ["Chapter 15", "Complete REST API Specification & Endpoint Contracts", "Page 42"],
-        ["Chapter 16", "Automated Testing Suite & Quality Assurance (All 45 Test Scenarios)", "Page 44"],
-        ["Chapter 17", "Local Deployment, Setup Wizard & Administration Guide", "Page 47"],
-        ["Chapter 18", "Oral Exam & Viva Defense Master Preparation (30 In-Depth Q&As)", "Page 49"],
-        ["Chapter 19", "Technical Limitations, Security Hardening & Future Scope", "Page 53"],
-        ["Chapter 20", "Appendix, Project Glossary & File Manifest", "Page 55"]
-    ]
+    toc_data = TOC_DATA
     t_toc = doc.add_table(rows=len(toc_data), cols=3)
     t_toc.alignment = WD_TABLE_ALIGNMENT.CENTER
     for r_idx, row in enumerate(toc_data):

@@ -305,86 +305,11 @@ def expand():
     })
 
     # -------------------------------------------------------------------------
-    # 3. Expand Chapter 14 (Dedicated Sections for all 11 Pages)
+    # 3. Expand Chapter 14 (Dedicated Component Deep Dive for all 11 Pages)
     # -------------------------------------------------------------------------
+    from chapter14_components import get_chapter14_sections
     ch14 = chapters[13] # Chapter 14
-    
-    page_details = [
-        ("Dashboard Overview (`/`)", "The master monitoring console displays real-time health telemetry.", [
-            "Visual Metrics: Live database connectivity indicator with round-trip latency in milliseconds, total table count, active issues count, and pending repair proposals count.",
-            "Health Score Gauge: Visual percentage meter computed from unique broken records against total schema records.",
-            "Visual Charts: Recharts SVG Pie Chart displaying severity distribution (CRITICAL, HIGH, MEDIUM, LOW) and Bar Chart displaying category breakdown (ORPHAN, DUPLICATE, NULL, DOMAIN).",
-            "Recent Activity Streams: Live scrolling feed of recent scan runs and recent audit log events with actor attribution."
-        ]),
-        ("Database Explorer (`/database`)", "Interactive visual inspection of live database tables and schema dictionaries.", [
-            "Table Selector: Dropdown populated dynamically from `INFORMATION_SCHEMA.TABLES`.",
-            "Schema Dictionary Tab: Displays all column names, MySQL data types, nullability, default values, and primary/foreign key flags.",
-            "Live Data Grid Tab: Renders the first 50 live rows with pagination controls and column sorting.",
-            "SQL Injection Shield: Validates table parameter against strict regex `^[a-zA-Z_][a-zA-Z0-9_]*$` before query dispatch."
-        ]),
-        ("Relational Dependency Visualizer (`/dependencies`)", "Interactive directed graph representing the database schema DAG topology.", [
-            "Canvas Rendering: Interactive SVG canvas rendering table nodes color-coded by tier (Business, Staging, System, Audit).",
-            "Directed Edges: Glowing directional arrows pointing from referenced parent tables to dependent child tables.",
-            "Table Neighborhood Inspector: Clicking any table displays direct parents, direct children, transitive ancestors, and downstream descendants.",
-            "Cycle Status Badge: Displays green 'Schema is Acyclic' badge or red 'Circular Dependency Detected' warning."
-        ]),
-        ("Integrity Scanner (`/scanner`)", "Inspection console for initiating automated database scans.", [
-            "Scan Scope Controls: Radio buttons allowing full database scan or targeted table subset scan.",
-            "Rule Selection Matrix: Interactive checklist allowing operators to enable or bypass specific rules during the scan run.",
-            "Scan Execution Timeline: Displays start time, end time, total live rows inspected, and millisecond duration timer.",
-            "Issues Grid: Live results table with severity badges, category pills, and direct 'Inspect Issue' action buttons."
-        ]),
-        ("Issue Management Center (`/issues`)", "Comprehensive triage dashboard for reviewing and classifying detected anomalies.", [
-            "Filter Pills: Instant filtering by Status (`OPEN`, `REVIEWED`, `APPROVED`, `REPAIRED`, `IGNORED`, `FAILED`) and Severity.",
-            "Issue Card View: Displays table name, record primary key, defective column, current invalid value, and rule description.",
-            "Raw Record Modal: Clicking 'View Row' fetches the live database row and renders it as formatted JSON.",
-            "Triage Actions: Allows operators to mark issues as 'Reviewed', mark as 'Ignored' with required reason notes, or launch Repair Preview."
-        ]),
-        ("Repair Center & Preview Room (`/repairs`)", "High-safety surgical preview and atomic remediation console.", [
-            "Before / After Comparison: Side-by-side split cards comparing the exact current row against the proposed healed state.",
-            "Cryptographic Concurrency Token: Displays the SHA-256 row-version hash guaranteeing that data has not changed since preview.",
-            "SQL Preview Box: Displays the exact parameterized SQL statement that will be executed inside the transaction.",
-            "Risk Assessment Badge: Displays the multi-factor risk tier and cascading blast radius table count.",
-            "Human Input Guardian: When repairing NULL names or invalid values, prompts the administrator to provide an authoritative replacement value."
-        ]),
-        ("Transaction Simulator (`/transactions`)", "Interactive laboratory demonstrating InnoDB ACID isolation and recovery.", [
-            "Scenario Selector: Interactive cards for `COMMIT_SUCCESS`, `SIMULATED_FAILURE_ROLLBACK`, and `SAVEPOINT_PARTIAL_ROLLBACK`.",
-            "Live Execution Console: Executes real SQL on the live MySQL server with autocommit disabled.",
-            "Timeline Stepper: Visual vertical timeline showing each step (`START TRANSACTION`, `INSERT`, `SAVEPOINT`, `ROLLBACK`, `COMMIT`).",
-            "State Verification Badge: Confirms that record count before transaction equals record count after rollback, proving Atomicity."
-        ]),
-        ("Recovery Center (`/recovery`)", "Application-level point-in-time snapshot creation and restoration console.", [
-            "Create Snapshot Form: Allows operators to select any table and capture an immediate named recovery checkpoint.",
-            "Checkpoint History Grid: Displays checkpoint ID, target table, creation timestamp, captured row count, and status.",
-            "One-Click Restore Button: Launches transactional restoration workflow with pre-verification of row counts and primary keys.",
-            "Restore Verification Card: Confirms that restored row count exactly equals snapshot row count."
-        ]),
-        ("Audit Trail Explorer (`/audit`)", "Immutable chronological flight recorder of all system events.", [
-            "Search & Filter: Real-time search by table name, record ID, actor, or event type (`SCAN_COMPLETED`, `REPAIR_EXECUTED`).",
-            "Event Timeline: Displays timestamp, actor identity (`ADMIN_USER`, `SYSTEM`), target entity, and success/failure badge.",
-            "Payload Inspector: Expandable JSON modal displaying redacted before-and-after values and error traces.",
-            "Immutability Notice: Informs users that audit logs are protected by native MySQL `BEFORE DELETE` and `BEFORE UPDATE` triggers."
-        ]),
-        ("Rules Configuration (`/rules`)", "Interactive rulebook editor for customizing validation bounds.", [
-            "Rule Cards Grid: Cards displaying rule code, target table, column, rule type, and current parameter values.",
-            "Enable / Disable Toggles: Instant toggle switches updating the `is_enabled` flag in `integrity_rules`.",
-            "Dry-Run Test Button: Executes the rule query immediately against the current database and reports matching violation counts without modifying data.",
-            "Parameter Modal: Allows editing range boundaries (e.g., changing max age from 65 to 70) or updating regular expressions."
-        ]),
-        ("Diagnostics & Settings (`/settings`)", "System configuration and testing laboratory.", [
-            "Connection Telemetry: Real-time round-trip latency graph, database server version, connected user, and host IP.",
-            "Inject Demo Violations Button: Automatically injects 11 controlled anomalies across staging and student tables for demonstration.",
-            "Reset to Clean Baseline Button: Truncates staging tables, cleans demo students, and restores 100% clean academic baseline data.",
-            "Environment Settings: Displays active `APP_ENV`, `API_PREFIX`, and `FRONTEND_ORIGIN` configurations."
-        ])
-    ]
-
-    for p_title, p_desc, p_bullets in page_details:
-        ch14["sections"].append({
-            "title": f"14.{len(ch14['sections'])+1} Detailed Page Walkthrough: {p_title}",
-            "paragraphs": [p_desc],
-            "bullets": p_bullets
-        })
+    ch14["sections"] = get_chapter14_sections()
 
     # -------------------------------------------------------------------------
     # 4. Expand Chapter 18 (All 30 Viva Questions with full multi-paragraph answers)
@@ -642,6 +567,19 @@ def expand():
             "compute partitioned subgraphs and coordinate with a distributed metadata sequencer to calculate cross-shard blast radiuses with zero distributed deadlocks."
         ]
     })
+
+    # -------------------------------------------------------------------------
+    # 11. Expand Chapter 15 (REST API Specification with all 24 Endpoints)
+    # -------------------------------------------------------------------------
+    from expanded_api_setup import get_chapter15_sections, get_chapter17_sections
+    ch15 = chapters[14]
+    ch15["sections"] = get_chapter15_sections()
+
+    # -------------------------------------------------------------------------
+    # 12. Expand Chapter 17 (Automated Setup Wizard & Diagnostics Matrix)
+    # -------------------------------------------------------------------------
+    ch17 = chapters[16]
+    ch17["sections"] = get_chapter17_sections()
 
     return chapters
 

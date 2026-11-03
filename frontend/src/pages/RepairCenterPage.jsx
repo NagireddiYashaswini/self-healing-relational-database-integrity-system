@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Wrench,
@@ -14,7 +14,10 @@ import {
   Archive,
   Trash2,
   Shuffle,
-  Network
+  Network,
+  Filter,
+  Search,
+  Database
 } from 'lucide-react';
 import { repairsApi, issuesApi } from '../services/api';
 import { Button } from '../components/common/Button';
@@ -23,6 +26,15 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 
+const CORE_SIX_TABLES = [
+  'departments',
+  'instructors',
+  'courses',
+  'students',
+  'enrollments',
+  'staging_enrollments',
+];
+
 export const RepairCenterPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -30,6 +42,12 @@ export const RepairCenterPage = () => {
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState([]);
   const [executions, setExecutions] = useState([]);
+
+  // Filtering states across all six tables
+  const [tableFilter, setTableFilter] = useState('ALL');
+  const [strategyFilter, setStrategyFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Preview & Execution Modal
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
@@ -193,16 +211,46 @@ export const RepairCenterPage = () => {
     }
   };
 
+  // Filtered recommendations across all six tables
+  const filteredRecommendations = useMemo(() => {
+    return recommendations.filter((rec) => {
+      if (tableFilter !== 'ALL' && rec.table_name !== tableFilter) return false;
+      if (strategyFilter !== 'ALL' && rec.strategy !== strategyFilter) return false;
+      if (statusFilter === 'PENDING' && rec.issue_status === 'REPAIRED') return false;
+      if (statusFilter === 'REPAIRED' && rec.issue_status !== 'REPAIRED') return false;
+      if (searchQuery.trim() !== '') {
+        const q = searchQuery.toLowerCase();
+        const matchesId = rec.issue_id.toLowerCase().includes(q);
+        const matchesTable = (rec.table_name || '').toLowerCase().includes(q);
+        const matchesRecId = String(rec.record_id || '').toLowerCase().includes(q);
+        const matchesAction = (rec.proposed_action || '').toLowerCase().includes(q);
+        const matchesStrategy = (rec.strategy || '').toLowerCase().includes(q);
+        if (!matchesId && !matchesTable && !matchesRecId && !matchesAction && !matchesStrategy) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [recommendations, tableFilter, strategyFilter, statusFilter, searchQuery]);
+
+  // Unique strategies present in recommendations
+  const availableStrategies = useMemo(() => {
+    const set = new Set();
+    recommendations.forEach(r => { if (r.strategy) set.add(r.strategy); });
+    return Array.from(set);
+  }, [recommendations]);
+
   return (
     <div className="space-y-4 max-w-[1600px] mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
         <div>
           <h2 className="text-lg font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <Wrench className="w-5 h-5 text-indigo-600" />
             Self-Healing Operations & Repair Center
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            ACID transaction-safe repair actions, blast radius calculation, state rollback protection, and durability logs.
+            ACID transaction-safe repair actions across all six schema tables: preview before/after diffs, blast radius calculation, state rollback protection, and durability logs.
           </p>
         </div>
 
@@ -244,16 +292,99 @@ export const RepairCenterPage = () => {
       <div className="space-y-4">
         {/* Section 1: Pending Recommendations Table */}
         <div className="bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <Wrench className="w-3.5 h-3.5 text-indigo-600" /> Pending Healing Recommendations ({recommendations.filter(r => r.issue_status !== 'REPAIRED').length})
-            </h3>
-            <Badge variant="PENDING">Awaiting Action</Badge>
+          <div className="px-4 py-3 border-b border-slate-200 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <Wrench className="w-3.5 h-3.5 text-indigo-600" />
+                Healing Recommendations ({filteredRecommendations.length} of {recommendations.length})
+              </h3>
+              <div className="flex items-center gap-2 font-mono text-xs">
+                <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-bold">
+                  Pending: {recommendations.filter(r => r.issue_status !== 'REPAIRED').length}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
+                  Repaired: {recommendations.filter(r => r.issue_status === 'REPAIRED').length}
+                </span>
+              </div>
+            </div>
+
+            {/* Filter Pills Bar Covering All Six Tables */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+              {/* Table Selector */}
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded text-[11px]">
+                <span className="px-1 text-slate-500 font-bold uppercase text-[9px]">Table:</span>
+                <button
+                  onClick={() => setTableFilter('ALL')}
+                  className={`px-1.5 py-0.5 rounded ${tableFilter === 'ALL' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600'}`}
+                >
+                  All (6)
+                </button>
+                {CORE_SIX_TABLES.map(tbl => (
+                  <button
+                    key={tbl}
+                    onClick={() => setTableFilter(tbl)}
+                    className={`px-1.5 py-0.5 rounded ${tableFilter === tbl ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600'}`}
+                  >
+                    {tbl}
+                  </button>
+                ))}
+              </div>
+
+              {/* Strategy Selector */}
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded text-[11px]">
+                <span className="px-1 text-slate-500 font-bold uppercase text-[9px]">Strategy:</span>
+                <button
+                  onClick={() => setStrategyFilter('ALL')}
+                  className={`px-1.5 py-0.5 rounded ${strategyFilter === 'ALL' ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600'}`}
+                >
+                  All
+                </button>
+                {availableStrategies.map(st => (
+                  <button
+                    key={st}
+                    onClick={() => setStrategyFilter(st)}
+                    className={`px-1.5 py-0.5 rounded ${strategyFilter === st ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600'}`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+
+              {/* Status Selector */}
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded text-[11px]">
+                <span className="px-1 text-slate-500 font-bold uppercase text-[9px]">Status:</span>
+                {[
+                  { id: 'ALL', label: 'All' },
+                  { id: 'PENDING', label: 'Pending' },
+                  { id: 'REPAIRED', label: 'Repaired' }
+                ].map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setStatusFilter(s.id)}
+                    className={`px-1.5 py-0.5 rounded ${statusFilter === s.id ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600'}`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Box */}
+              <div className="relative flex-1 min-w-[180px]">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search issues, tables, actions..."
+                  className="w-full pl-7 pr-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
           </div>
 
           {loading ? (
             <LoadingSpinner label="Loading proposed repair strategies..." />
-          ) : recommendations.length > 0 ? (
+          ) : filteredRecommendations.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
@@ -267,7 +398,7 @@ export const RepairCenterPage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
-                  {recommendations.map((rec) => {
+                  {filteredRecommendations.map((rec) => {
                     const isRepaired = rec.issue_status === 'REPAIRED';
                     return (
                       <tr key={rec.recommendation_id} className={`hover:bg-slate-50/70 transition-colors ${isRepaired ? 'opacity-50' : ''}`}>
@@ -278,7 +409,14 @@ export const RepairCenterPage = () => {
                           </div>
                         </td>
                         <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 font-bold text-[11px]">
+                          <span className={`px-2 py-0.5 rounded border font-bold text-[11px] ${
+                            rec.strategy === 'QUARANTINE' ? 'bg-purple-50 text-purple-800 border-purple-200' :
+                            rec.strategy === 'MAP_PARENT' ? 'bg-sky-50 text-sky-800 border-sky-200' :
+                            rec.strategy === 'RESTORE_PARENT' || rec.strategy === 'RESTORE' ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                            rec.strategy === 'SET_DEFAULT' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                            rec.strategy === 'MERGE_DUPLICATE' || rec.strategy === 'MERGE' ? 'bg-orange-50 text-orange-800 border-orange-200' :
+                            'bg-slate-100 text-slate-800 border-slate-200'
+                          }`}>
                             {rec.strategy}
                           </span>
                         </td>
@@ -313,8 +451,8 @@ export const RepairCenterPage = () => {
               </table>
             </div>
           ) : (
-            <div className="p-8 text-center text-slate-500 text-xs">
-              No pending recommendations. Run an integrity scan to detect violations.
+            <div className="p-8 text-center text-slate-500 text-xs font-sans">
+              No recommendations matching the active filters. Run an integrity scan or select 'All'.
             </div>
           )}
         </div>
@@ -408,6 +546,49 @@ export const RepairCenterPage = () => {
               </div>
             )}
 
+            {/* QUARANTINE Strategy Notice */}
+            {previewData.strategy === 'QUARANTINE' && (
+              <div className="p-3 rounded bg-purple-50 border border-purple-200 text-xs space-y-1">
+                <div className="font-bold text-purple-900 flex items-center gap-1.5">
+                  <Archive className="w-3.5 h-3.5 text-purple-700" />
+                  Quarantine Archival Operation (Zero Data Loss)
+                </div>
+                <p className="text-[11px] text-purple-800 leading-relaxed font-sans">
+                  1. The complete original row from table <strong className="font-mono">`{previewData.table_name}`</strong> will be serialized to JSON.
+                  <br />
+                  2. Row is inserted into <strong className="font-mono">`quarantine_records`</strong> with audit timestamp, source table, and reason.
+                  <br />
+                  3. The invalid row is deleted from <strong className="font-mono">`{previewData.table_name}`</strong> only after successful quarantine storage within the same ACID transaction.
+                </p>
+              </div>
+            )}
+
+            {/* RESTORE_PARENT Strategy Notice */}
+            {(previewData.strategy === 'RESTORE_PARENT' || previewData.strategy === 'RESTORE') && (
+              <div className="p-3 rounded bg-sky-50 border border-sky-200 text-xs space-y-1">
+                <div className="font-bold text-sky-900 flex items-center gap-1.5">
+                  <RotateCcw className="w-3.5 h-3.5 text-sky-700" />
+                  Parent Entity Restoration
+                </div>
+                <p className="text-[11px] text-sky-800 leading-relaxed font-sans">
+                  Restores or recreates the missing parent entity in the referenced master table, ensuring referential integrity without orphan records.
+                </p>
+              </div>
+            )}
+
+            {/* MERGE_DUPLICATE Strategy Notice */}
+            {(previewData.strategy === 'MERGE_DUPLICATE' || previewData.strategy === 'MERGE') && (
+              <div className="p-3 rounded bg-amber-50 border border-amber-200 text-xs space-y-1">
+                <div className="font-bold text-amber-900 flex items-center gap-1.5">
+                  <Shuffle className="w-3.5 h-3.5 text-amber-700" />
+                  Duplicate Record Consolidation & Merge
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed font-sans">
+                  Consolidates duplicate records into the canonical master row. Reassigns any dependent child foreign keys before removing the redundant row.
+                </p>
+              </div>
+            )}
+
             {/* Administrator Input Section for SET_DEFAULT */}
             {previewData.strategy === 'SET_DEFAULT' && (previewData.requires_admin_input || previewData.input_field_name) && (
               <div className="p-3.5 rounded bg-amber-50/70 border border-amber-200 space-y-2">
@@ -422,7 +603,7 @@ export const RepairCenterPage = () => {
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Original business data is missing. Automated insertion of placeholder strings is strictly prohibited. Enter a verified replacement value:
+                  Original business data is missing or invalid. Automated insertion of arbitrary placeholder strings is prohibited. Enter a verified replacement value:
                 </p>
                 <div className="flex gap-2">
                   <input

@@ -20,7 +20,7 @@ TABLE_RECOVERY = {'recovery_checkpoints'}
 
 # Fallback default tables if metadata lookup is unavailable
 DEFAULT_SCAN_TABLES = [
-    "customers", "categories", "suppliers", "products", "orders", "order_items", "payments", "inventory"
+    "departments", "instructors", "courses", "students", "enrollments", "staging_enrollments"
 ]
 
 def classify_table(table_name: str) -> str:
@@ -71,8 +71,8 @@ class IntegrityScanner:
                     categorized[cat].append(tname)
         except Exception as e:
             logger.warning(f"Could not discover tables dynamically: {e}")
-            categorized["business"] = ["customers", "categories", "suppliers", "products", "orders", "order_items", "payments", "inventory"]
-            categorized["staging"] = []
+            categorized["business"] = ["departments", "instructors", "courses", "students", "enrollments"]
+            categorized["staging"] = ["staging_enrollments"]
             categorized["system"] = list(TABLE_SYSTEM)
             categorized["audit"] = list(TABLE_AUDIT)
             categorized["recovery"] = list(TABLE_RECOVERY)
@@ -219,11 +219,12 @@ class IntegrityScanner:
                         )
                         # Ensure repair recommendation exists without inserting duplicates
                         cur.execute(
-                            "SELECT recommendation_id FROM repair_recommendations WHERE issue_id = %s",
+                            "SELECT recommendation_id, strategy FROM repair_recommendations WHERE issue_id = %s",
                             (issue["issue_id"],)
                         )
-                        if not cur.fetchone():
-                            rec = self._generate_recommendation(issue)
+                        existing_rec = cur.fetchone()
+                        rec = self._generate_recommendation(issue)
+                        if not existing_rec:
                             cur.execute(
                                 """
                                 INSERT INTO repair_recommendations (
@@ -241,6 +242,28 @@ class IntegrityScanner:
                                     rec["risk_level"],
                                     rec["is_reversible"],
                                     rec["requires_approval"]
+                                )
+                            )
+                        elif existing_rec.get("strategy") == "MANUAL_INTERVENTION" and rec["strategy"] != "MANUAL_INTERVENTION":
+                            cur.execute(
+                                """
+                                UPDATE repair_recommendations SET
+                                    strategy = %s,
+                                    problem_description = %s,
+                                    proposed_action = %s,
+                                    reason = %s,
+                                    expected_impact = %s,
+                                    risk_level = %s
+                                WHERE issue_id = %s
+                                """,
+                                (
+                                    rec["strategy"],
+                                    rec["problem_description"],
+                                    rec["proposed_action"],
+                                    rec["reason"],
+                                    rec["expected_impact"],
+                                    rec["risk_level"],
+                                    issue["issue_id"]
                                 )
                             )
                     else:
@@ -351,6 +374,29 @@ class IntegrityScanner:
             )
 
             duration_ms = round((end_time - start_time).total_seconds() * 1000, 2)
+
+            # Granular metrics by table, category, and active rules
+            issues_by_table = {tbl: 0 for tbl in tables_to_scan}
+            for issue in final_issues:
+                t_name = issue["table_name"]
+                issues_by_table[t_name] = issues_by_table.get(t_name, 0) + 1
+
+            issues_by_category = {
+                "ORPHAN": 0,
+                "DUPLICATE": 0,
+                "NULL_VIOLATION": 0,
+                "DOMAIN_VIOLATION": 0,
+                "SYSTEM_INTEGRITY": 0
+            }
+            for issue in final_issues:
+                cat_name = issue["category"]
+                issues_by_category[cat_name] = issues_by_category.get(cat_name, 0) + 1
+
+            rules_by_table = {tbl: 0 for tbl in tables_to_scan}
+            for rule in active_rules:
+                t_name = rule["target_table"]
+                rules_by_table[t_name] = rules_by_table.get(t_name, 0) + 1
+
             return {
                 "scan_id": scan_id,
                 "scan_type": scan_type,
@@ -365,7 +411,11 @@ class IntegrityScanner:
                 "medium_count": medium_count,
                 "low_count": low_count,
                 "duration_ms": duration_ms,
-                "issues": final_issues
+                "issues": final_issues,
+                "issues_by_table": issues_by_table,
+                "issues_by_category": issues_by_category,
+                "rules_by_table": rules_by_table,
+                "total_rules": len(active_rules)
             }
 
         except Exception as e:
@@ -784,20 +834,31 @@ class IntegrityScanner:
 
         elif cat == "DOMAIN_VIOLATION":
             c_low = col.lower()
-            if any(k in c_low for k in ["marks", "grade", "price", "stock", "amount", "quantity"]):
-                strategy = "SET_DEFAULT"
-                action = f"Clamp or correct column '{col}' to standard positive domain range (current value: {val})."
-                reason = f"Numerical value {val} falls outside standard positive business range."
+            strategy = "SET_DEFAULT"
+            if any(k in c_low for k in ["marks", "grade", "price", "stock", "amount", "quantity", "budget", "salary", "credits", "age", "gpa", "year"]):
+                action = f"Clamp or correct column '{col}' to standard valid business domain range (current value: {val})."
+                reason = f"Numerical value {val} falls outside allowable business domain range."
                 impact = f"Corrects {col} in {table} row {pk}."
                 risk = "MEDIUM"
                 reversible = True
+            elif any(k in c_low for k in ["status", "state", "type"]):
+                action = f"Set column '{col}' to standard valid allowed enum value (current invalid value: '{val}')."
+                reason = f"Value '{val}' does not match allowed domain enum values."
+                impact = f"Updates {col} in {table} row {pk} to valid domain enum."
+                risk = "MEDIUM"
+                reversible = True
+            elif any(k in c_low for k in ["email", "mail", "pattern", "syntax"]):
+                action = f"Sanitize and update column '{col}' with valid format (current value: '{val}')."
+                reason = f"Value '{val}' does not match required syntax domain pattern."
+                impact = f"Updates {col} in {table} row {pk} with valid format."
+                risk = "MEDIUM"
+                reversible = True
             else:
-                strategy = "MANUAL_INTERVENTION"
-                action = f"Mark for manual administrator review with recorded reason."
-                reason = "Domain violation cannot be safely repaired automatically without business context."
-                impact = f"Logs warning and leaves data unchanged until explicit human review."
-                risk = "LOW"
-                reversible = False
+                action = f"Set column '{col}' to valid default or administrator-provided value."
+                reason = f"Value '{val}' violates domain constraints for column '{col}'."
+                impact = f"Corrects {col} in {table} row {pk}."
+                risk = "MEDIUM"
+                reversible = True
         elif cat == "SYSTEM_INTEGRITY":
             strategy = "MANUAL_INTERVENTION"
             action = f"Review system catalog entry for {table} (record {pk})."

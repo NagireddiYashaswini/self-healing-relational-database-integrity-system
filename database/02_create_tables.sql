@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS `departments` (
     `budget` DECIMAL(12, 2) NOT NULL DEFAULT 100000.00,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT `chk_dept_budget` CHECK (`budget` >= 0)
+    INDEX idx_dept_code (dept_code),
+    INDEX idx_dept_name (dept_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2. Instructors Table
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS `instructors` (
     CONSTRAINT `fk_instructors_dept` FOREIGN KEY (`dept_id`) 
         REFERENCES `departments`(`dept_id`) 
         ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT `chk_instructor_salary` CHECK (`salary` >= 0)
+    INDEX idx_instructor_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 3. Courses Table
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS `courses` (
     CONSTRAINT `fk_courses_instructor` FOREIGN KEY (`instructor_id`) 
         REFERENCES `instructors`(`instructor_id`) 
         ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT `chk_course_credits` CHECK (`credits` > 0 AND `credits` <= 12)
+    INDEX idx_course_code (course_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4. Students Table
@@ -90,8 +91,7 @@ CREATE TABLE IF NOT EXISTS `enrollments` (
     CONSTRAINT `fk_enrollments_course` FOREIGN KEY (`course_id`) 
         REFERENCES `courses`(`course_id`) 
         ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT `uq_student_course` UNIQUE (`student_id`, `course_id`),
-    CONSTRAINT `chk_grade_marks` CHECK (`grade_marks` IS NULL OR (`grade_marks` >= 0.00 AND `grade_marks` <= 100.00))
+    INDEX idx_student_course (student_id, course_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------

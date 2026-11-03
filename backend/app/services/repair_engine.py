@@ -309,6 +309,30 @@ class RepairEngine:
                     sql_preview.append(f"DELETE FROM `{table_name}` WHERE `{pk_col}` = {record_id};")
                     after_row = {"status": "DELETED"}
 
+                elif strategy in ("RESTORE_PARENT", "RESTORE", "restore_parent", "restore"):
+                    parent_table = issue.get("parent_table") or (rule_row.get("parent_table") if rule_row else None) or "departments"
+                    parent_col = issue.get("parent_column") or (rule_row.get("parent_column") if rule_row else None) or f"{parent_table.rstrip('s')}_id"
+                    missing_id = current_row.get(col_name) or issue.get("invalid_value")
+
+                    cur.execute("SELECT * FROM quarantine_records WHERE source_table = %s AND source_pk_value = %s", (parent_table, str(missing_id)))
+                    quarantined_parent = cur.fetchone()
+
+                    if quarantined_parent:
+                        sql_preview.append(f"-- Restoring parent record from quarantine_records (quarantine_id = {quarantined_parent['quarantine_id']})")
+                        sql_preview.append(f"INSERT INTO `{parent_table}` VALUES (... archived row ...);")
+                        after_row["parent_status"] = f"RESTORED_FROM_QUARANTINE (ID: {missing_id})"
+                    else:
+                        sql_preview.append(f"-- Creating baseline parent entity in `{parent_table}` to resolve foreign key reference")
+                        sql_preview.append(f"INSERT INTO `{parent_table}` (`{parent_col}`, ...) VALUES ({missing_id}, ...);")
+                        after_row["parent_status"] = f"RESTORED_BASELINE (ID: {missing_id})"
+
+                elif strategy in ("MERGE_DUPLICATE", "MERGE", "merge_duplicate", "merge"):
+                    is_destructive = True
+                    sql_preview.append(f"-- Merging duplicate record: archiving to quarantine and deleting redundant row")
+                    sql_preview.append(f"INSERT INTO `quarantine_records` (source_table, source_pk_value, issue_type, row_data_json, quarantine_reason) VALUES ('{table_name}', '{record_id}', 'DUPLICATE_MERGE', '{{JSON_PAYLOAD}}', 'Merged duplicate record into canonical');")
+                    sql_preview.append(f"DELETE FROM `{table_name}` WHERE `{pk_col}` = {record_id};")
+                    after_row["status"] = "MERGED_AND_QUARANTINED"
+
                 elif strategy == "MAP_PARENT":
                     parent_table = issue.get("parent_table") or (rule_row.get("parent_table") if rule_row else None)
                     parent_col = issue.get("parent_column") or (rule_row.get("parent_column") if rule_row else None)
@@ -468,17 +492,21 @@ class RepairEngine:
         finally:
             conn.close()
 
-    def approve_recommendation(self, recommendation_id: int, operator: str = "ADMIN_USER") -> Dict[str, Any]:
+    def approve_recommendation(self, recommendation_id: Any, operator: str = "ADMIN_USER") -> Dict[str, Any]:
         """Marks a repair recommendation as APPROVED by an authorized operator."""
         conn = get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT * FROM repair_recommendations WHERE recommendation_id = %s", (recommendation_id,))
+                if isinstance(recommendation_id, str) and (recommendation_id.startswith("ISSUE-") or not recommendation_id.isdigit()):
+                    cur.execute("SELECT * FROM repair_recommendations WHERE issue_id = %s", (recommendation_id,))
+                else:
+                    cur.execute("SELECT * FROM repair_recommendations WHERE recommendation_id = %s", (int(recommendation_id),))
                 rec = cur.fetchone()
                 if not rec:
                     raise ValueError(f"Recommendation ID {recommendation_id} not found.")
 
-                cur.execute("UPDATE repair_recommendations SET approval_status = 'APPROVED' WHERE recommendation_id = %s", (recommendation_id,))
+                rec_id = rec["recommendation_id"]
+                cur.execute("UPDATE repair_recommendations SET approval_status = 'APPROVED' WHERE recommendation_id = %s", (rec_id,))
                 cur.execute("UPDATE integrity_issues SET status = 'APPROVED' WHERE issue_id = %s", (rec["issue_id"],))
 
             conn.commit()
@@ -639,6 +667,53 @@ class RepairEngine:
                 elif strategy == "DELETE_RECORD":
                     cur.execute(f"DELETE FROM `{table_name}` WHERE `{pk_col}` = %s", (record_id,))
                     sql_statements_executed.append(f"DELETE FROM `{table_name}` WHERE `{pk_col}` = {record_id}")
+
+                elif strategy in ("RESTORE_PARENT", "RESTORE", "restore_parent", "restore"):
+                    parent_table = validate_identifier(issue.get("parent_table") or (rule_meta.get("parent_table") if rule_meta else None) or "departments")
+                    parent_col = validate_identifier(issue.get("parent_column") or (rule_meta.get("parent_column") if rule_meta else None) or f"{parent_table.rstrip('s')}_id")
+                    missing_id = before_row.get(col_name) or issue.get("invalid_value")
+
+                    cur.execute("SELECT * FROM quarantine_records WHERE source_table = %s AND source_pk_value = %s", (parent_table, str(missing_id)))
+                    q_parent = cur.fetchone()
+                    if q_parent and q_parent.get("row_data_json"):
+                        parent_data = json.loads(q_parent["row_data_json"])
+                        cols = [f"`{k}`" for k in parent_data.keys()]
+                        placeholders = ["%s"] * len(cols)
+                        vals = list(parent_data.values())
+                        cur.execute(f"INSERT INTO `{parent_table}` ({', '.join(cols)}) VALUES ({', '.join(placeholders)})", tuple(vals))
+                        cur.execute("UPDATE quarantine_records SET resolved = TRUE, resolution_notes = 'Restored via self-healing' WHERE quarantine_id = %s", (q_parent["quarantine_id"],))
+                        sql_statements_executed.append(f"RESTORE parent from quarantine into `{parent_table}` ({parent_col} = {missing_id})")
+                    else:
+                        if parent_table == "departments":
+                            cur.execute("INSERT INTO `departments` (`dept_id`, `dept_code`, `dept_name`, `budget`) VALUES (%s, %s, %s, 100000.00)",
+                                        (missing_id, f"DEPT_{missing_id}", f"Restored Department {missing_id}"))
+                        elif parent_table == "instructors":
+                            cur.execute("INSERT INTO `instructors` (`instructor_id`, `instructor_name`, `email`, `salary`) VALUES (%s, %s, %s, 50000.00)",
+                                        (missing_id, f"Restored Faculty {missing_id}", f"faculty_{missing_id}@univ.edu"))
+                        elif parent_table == "courses":
+                            cur.execute("INSERT INTO `courses` (`course_id`, `course_code`, `course_name`, `credits`) VALUES (%s, %s, %s, 3)",
+                                        (missing_id, f"CRS{missing_id}", f"Restored Course {missing_id}"))
+                        elif parent_table == "students":
+                            cur.execute("INSERT INTO `students` (`student_id`, `student_name`, `email`, `age`, `gpa`) VALUES (%s, %s, %s, 21, 3.00)",
+                                        (missing_id, f"Restored Student {missing_id}", f"student_{missing_id}@univ.edu"))
+                        sql_statements_executed.append(f"INSERT baseline parent stub into `{parent_table}` ({parent_col} = {missing_id})")
+
+                elif strategy in ("MERGE_DUPLICATE", "MERGE", "merge_duplicate", "merge"):
+                    insert_quarantine_sql = """
+                        INSERT INTO quarantine_records (
+                            source_table, source_pk_value, issue_type, row_data_json, quarantine_reason, quarantined_by
+                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """
+                    cur.execute(insert_quarantine_sql, (
+                        table_name,
+                        str(record_id),
+                        "DUPLICATE_MERGE",
+                        json.dumps(before_row, default=str),
+                        issue["description"],
+                        operator
+                    ))
+                    cur.execute(f"DELETE FROM `{table_name}` WHERE `{pk_col}` = %s", (record_id,))
+                    sql_statements_executed.append(f"MERGE: Archived duplicate row {pk_col}={record_id} to quarantine_records and deleted from `{table_name}`")
 
                 elif strategy == "MAP_PARENT":
                     parent_id = repair_parameters.get("parent_id") if repair_parameters else None
