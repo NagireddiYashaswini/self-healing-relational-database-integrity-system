@@ -240,52 +240,56 @@ def get_chapter14_sections():
     # PAGE 4: INTEGRITY SCANNER (/scanner)
     # =========================================================================
     sections.append({
-        "title": "14.4 Page 4: Integrity Scanner (`/scanner`) — Anomaly Detection Console",
+        "title": "14.4 Page 4: Integrity Scanner (`/scanner`) — Six-Table Autonomous Anomaly Detection Console",
         "paragraphs": [
-            "The Integrity Scanner provides fine-grained controls to execute automated validation passes across active database tables, evaluating rules and persisting discovered anomalies."
+            "The Integrity Scanner serves as the autonomous diagnostic core of the platform, executing 45 parameterized integrity rules across all six schema tables (departments, instructors, courses, students, enrollments, staging_enrollments) to identify referential orphans, candidate key duplicates, mandatory null breaches, and domain anomalies."
         ]
     })
 
     # Component 4.1
     sections.append({
-        "title": "14.4.1 Component 1: Scan Scope Selector & Table Checkbox Matrix",
+        "title": "14.4.1 Component 1: Six-Table Target Scope Selector & Table Checkbox Matrix",
         "paragraphs": [
-            "• Visual Wireframe Role: Scope toggle allowing operators to choose between a Full Database Scan (all 16 tables) or a Targeted Table Scan with multi-select checkboxes.",
-            "• 10-Year-Old Explanation: The Search Zone Chooser. Tells the robot doctor whether to inspect the entire school or just check the Science classroom.",
-            "• Underlying DBMS Concept: Scan Scope Partitioning and Workload Isolation. Allows testing single staging tables without incurring lock contention across production tables."
+            "• Visual Wireframe Role: Three-panel top configuration card providing Full DB (all six core tables) vs Selected scope toggles, individual table checkboxes with row counts, and dynamic table inclusion.",
+            "• 10-Year-Old Explanation: The Search Zone Chooser. Tells the robot doctor whether to inspect all six classrooms in the school or just look inside the Staging Sandbox.",
+            "• Underlying DBMS Concept: Scan Scope Partitioning and Workload Isolation. Allows running targeted inspections against single tables (e.g. `staging_enrollments`) without locking or scanning unrelated production entities.",
+            "• Monitored Tables: `departments` (Reference Entity), `instructors` (Faculty Entity), `courses` (Curricular Entity), `students` (Scholar Entity), `enrollments` (Junction Entity), `staging_enrollments` (Raw Intake Sandbox)."
         ]
     })
 
     # Component 4.2
     sections.append({
-        "title": "14.4.2 Component 2: Interactive Rule Selection Checklist",
+        "title": "14.4.2 Component 2: 45 Active Rules Configuration & Category Breakdown Cards",
         "paragraphs": [
-            "• Visual Wireframe Role: Checklist displaying all 16 active rules with severity badges, allowing operators to include or bypass specific validation checks.",
-            "• 10-Year-Old Explanation: The Rule Checklist. You can tell the robot: 'Only look for ghost kids today, ignore age checks for now.'",
-            "• Underlying DBMS Concept: Predicate Dispatching and Rule Masking. Loads only enabled rules matching `is_enabled = TRUE` from `integrity_rules`."
+            "• Visual Wireframe Role: Rule selector panel displaying all 45 enabled rules with severity badges, coupled with four post-scan Category Breakdown Cards: ORPHAN Checks, DUPLICATE Checks, NULL Checks, and DOMAIN Checks.",
+            "• 10-Year-Old Explanation: The Four Emergency Clocks. Four big cards showing how many Ghost Kids (orphans), Evil Twins (duplicates), Blank Nametags (nulls), and Impossible Scores (domain errors) were found.",
+            "• Underlying DBMS Concept: Formal Integrity Constraint Taxonomy (Codd & Date). Divides relational verification into Referential Integrity (foreign keys), Entity Integrity (candidate uniqueness), Completeness (non-nullness), and Domain Integrity (ranges, enums, regexes).",
+            "• Directional Data Flow: Scans API `/api/scans` returns aggregated `issues_by_category` dictionary, updating the interactive filter state upon click."
         ]
     })
 
     # Component 4.3
     sections.append({
-        "title": "14.4.3 Component 3: Scan Progress Meter & Millisecond Timer",
+        "title": "14.4.3 Component 3: Six-Table Integrity Coverage Matrix",
         "paragraphs": [
-            "• Visual Wireframe Role: Animated progress bar showing live execution percentage, active table name being inspected, and elapsed time in milliseconds.",
-            "• 10-Year-Old Explanation: The Progress Bar and Stopwatch. Shows you how fast the robot is reading the drawers.",
-            "• Mathematical Formula: Scan Duration: $$\\Delta t = (t_{\\text{finish}} - t_{\\text{start}}) \\times 1000 \\text{ ms}$$"
+            "• Visual Wireframe Role: Comprehensive summary table displaying each of the six schema tables, its relational role, total rules configured, total rows inspected, total issues detected, category count badges, and real-time health status badge.",
+            "• 10-Year-Old Explanation: The School Report Board. A big leaderboard showing every single classroom drawer: how many cards were read, how many were broken, and whether that drawer is completely clean or needs medicine.",
+            "• Underlying DBMS Concept: Schema-Wide Multi-Relation Health Indexing. Aggregates inspection metrics across parent entities, dependent child entities, junction relations, and unconstrained staging tables.",
+            "• Exact SQL Diagnostics: Aggregates row counts via `COUNT(*)` on each table and sums issues grouped by `table_name` from `integrity_issues`."
         ]
     })
 
     # Component 4.4
     sections.append({
-        "title": "14.4.4 Component 4: Discovered Anomalies Summary Grid",
+        "title": "14.4.4 Component 4: Severity Distribution Bar & Multi-Table Findings Data Table",
         "paragraphs": [
-            "• Visual Wireframe Role: Summary cards showing Total Rows Inspected, Total Issues Found, Critical Count, and High Count, followed by a detailed findings table with 'Inspect Issue' action buttons.",
-            "• 10-Year-Old Explanation: The Results Board. Shows the total count of sick records found and gives you a button to fix each one.",
-            "• Exact SQL: Inserts detected anomalies into `integrity_issues` with status `OPEN`."
+            "• Visual Wireframe Role: Multi-colored stacked distribution bar (CRITICAL Red, HIGH Orange, MEDIUM Yellow, LOW Blue) and interactive findings table with table pills (`All`, `departments`, `instructors`, etc.), category pills, severity pills, real-time search box, and direct 'Self-Heal' action buttons.",
+            "• 10-Year-Old Explanation: The Symptom Searcher. Lets you filter by classroom or type a student's name to instantly find their broken record and click the 'Heal' button.",
+            "• Directional Data Flow: Clicking 'Self-Heal' navigates the operator directly to `/repairs?issue=ISSUE-XXXXXX`, pre-loading the ACID transaction preview modal for instant remediation."
         ]
     })
 
+    # =========================================================================
     # =========================================================================
     # PAGE 5: ISSUE MANAGEMENT CENTER (/issues)
     # =========================================================================
@@ -331,62 +335,64 @@ def get_chapter14_sections():
     # PAGE 6: REPAIR CENTER & PREVIEW ROOM (/repairs)
     # =========================================================================
     sections.append({
-        "title": "14.6 Page 6: Repair Center & Non-Destructive Preview Room (`/repairs`) — Safe Remediation",
+        "title": "14.6 Page 6: Repair Center & Non-Destructive Preview Room (`/repairs`) — Multi-Table Safe Remediation",
         "paragraphs": [
-            "The Repair Center is the surgical theater of the system, enforcing non-destructive Before/After comparisons, optimistic concurrency tokens, and human input validation before transaction dispatch."
+            "The Repair Center is the surgical theater of the system, enforcing non-destructive Before/After comparisons, optimistic concurrency tokens, multi-table filtering across all six tables, and ACID rollback protection."
         ]
     })
 
     # Component 6.1
     sections.append({
-        "title": "14.6.1 Component 1: Before State vs Proposed After State Split Cards",
+        "title": "14.6.1 Component 1: Multi-Table Healing Recommendation Selector & Filter Bar",
         "paragraphs": [
-            "• Visual Wireframe Role: Side-by-side split cards comparing the exact current row in the database against the proposed healed state, with modified fields highlighted in emerald green.",
-            "• 10-Year-Old Explanation: The Before-and-After Hologram. Shows what the card looks like right now on the left, and what it will look like when healed on the right.",
-            "• Underlying DBMS Concept: Non-Destructive Simulation. Constructs the repaired row state in application memory without modifying the live database."
+            "• Visual Wireframe Role: Header filter pill bar supporting instant filtering across all six schema tables (`All (6)`, `departments`, `instructors`, `courses`, `students`, `enrollments`, `staging_enrollments`), repair strategy, and resolution status.",
+            "• 10-Year-Old Explanation: The Medicine Shelf. Lets you pick which drawer's broken toys you want to repair first, or choose only the big emergency operations.",
+            "• Underlying DBMS Concept: Entity-Scoped Remediation Queuing. Isolates pending repair recommendations by target relational table, ensuring operators can triage staging data or production tables independently."
         ]
     })
 
     # Component 6.2
     sections.append({
-        "title": "14.6.2 Component 2: Cryptographic SHA-256 Row-Version Token Card",
+        "title": "14.6.2 Component 2: Before State vs Proposed After State Split Cards",
         "paragraphs": [
-            "• Visual Wireframe Role: Card displaying the 64-character SHA-256 hash computed from the row state, guaranteeing that the record has not been altered since preview generation.",
-            "• 10-Year-Old Explanation: The Digital Fingerprint. If anyone sneaks in and changes the card while you are looking at the screen, the fingerprint changes and the doctor stops!",
-            "• Underlying DBMS Concept: Optimistic Concurrency Control (OCC) and Phantom Modification Defense.",
-            "• Mathematical Formula: $$\\text{Token} = \\text{SHA-256}\\left( \\text{JSON}(\\text{SortKeys}(\\text{Row})) \\right)$$"
+            "• Visual Wireframe Role: Side-by-side split cards comparing the exact current row in the database against the proposed healed state, with modified fields highlighted in emerald green.",
+            "• 10-Year-Old Explanation: The Before-and-After Hologram. Shows what the card looks like right now on the left, and what it will look like when healed on the right.",
+            "• Underlying DBMS Concept: Non-Destructive In-Memory Simulation. Constructs the repaired row state in Python application memory without issuing write locks or modifying the live database."
         ]
     })
 
     # Component 6.3
     sections.append({
-        "title": "14.6.3 Component 3: Human Value Input Guardian Form",
+        "title": "14.6.3 Component 3: Cryptographic SHA-256 Row-Version Token Card",
         "paragraphs": [
-            "• Visual Wireframe Role: Dynamic input form appearing whenever an empty mandatory attribute (like student name) is being healed, forcing the operator to type an authoritative legal replacement.",
-            "• 10-Year-Old Explanation: The Missing Name Box. The robot will not guess a fake name; it makes the human type the student's real name.",
-            "• Underlying DBMS Concept: Deterministic Imputation Guard. Rejects fabricated dummy placeholders and enforces real-world business accuracy."
+            "• Visual Wireframe Role: Card displaying the 64-character SHA-256 hash computed from the row state, guaranteeing that the record has not been altered since preview generation.",
+            "• 10-Year-Old Explanation: The Digital Fingerprint. If anyone sneaks in and changes the card while you are looking at the screen, the fingerprint changes and the doctor stops!",
+            "• Underlying DBMS Concept: Optimistic Concurrency Control (OCC) and Phantom Modification Defense.",
+            r"• Mathematical Formula: $$\text{Token} = \text{SHA-256}\left( \text{JSON}(\text{SortKeys}(\text{Row})) \right)$$"
         ]
     })
 
     # Component 6.4
     sections.append({
-        "title": "14.6.4 Component 4: Parameterized SQL Preview Box",
+        "title": "14.6.4 Component 4: Quarantine Zero-Data-Loss JSON Archival Engine",
         "paragraphs": [
-            "• Visual Wireframe Role: Syntax-highlighted code block displaying the exact SQL statement (`UPDATE` or `INSERT ... DELETE`) that will be dispatched inside the transaction.",
-            "• 10-Year-Old Explanation: The Exact Spell. Shows the exact magic words the computer will whisper to MySQL.",
-            "• Exact SQL: Displays queries like `UPDATE students SET student_name = %s WHERE student_id = %s;`"
+            "• Visual Wireframe Role: Dedicated quarantine notice banner detailing the three-phase archival protocol: 1) Full row serialization to JSON; 2) Atomic insertion into `quarantine_records`; 3) Deletion from source table only after verified storage.",
+            "• 10-Year-Old Explanation: The Safe Storage Box. Before throwing away a messy paper, the computer takes a high-definition photograph of it and locks it in the museum safe, so nothing is ever lost forever.",
+            "• Underlying DBMS Concept: Transaction-Safe Isolation and Zero Data Loss (ZDL) Invariant. Guarantees that corrupted staging rows are preserved with full audit provenance.",
+            "• Exact SQL: `INSERT INTO quarantine_records (source_table, source_pk_value, issue_type, row_data_json, quarantine_reason) VALUES (%s, %s, %s, %s, %s);` followed by `DELETE FROM staging_enrollments WHERE staging_id = %s;` within an atomic transaction."
         ]
     })
 
     # Component 6.5
     sections.append({
-        "title": "14.6.5 Component 5: Two-Stage Execution Confirmation Dialog",
+        "title": "14.6.5 Component 5: Parameterized SQL Preview Box & Two-Stage Confirmation Dialog",
         "paragraphs": [
-            "• Visual Wireframe Role: Modal confirmation dialog requiring the operator to review the risk tier, check an 'I understand the impact' box, and click 'Confirm & Execute Repair'.",
-            "• 10-Year-Old Explanation: The Double Safety Lock. Like pressing two red buttons at the same time to launch a spaceship, ensuring no accidental clicks."
+            "• Visual Wireframe Role: Syntax-highlighted code block displaying the exact SQL statement (`UPDATE` or `INSERT ... DELETE`) that will be dispatched inside the transaction, followed by a modal confirmation dialog.",
+            "• 10-Year-Old Explanation: The Exact Spell and Double Lock. Shows the exact words whispered to MySQL and requires a two-button confirmation before committing changes."
         ]
     })
 
+    # =========================================================================
     # =========================================================================
     # PAGE 7: TRANSACTION SIMULATOR (/transactions)
     # =========================================================================

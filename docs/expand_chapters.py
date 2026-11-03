@@ -7,6 +7,10 @@ designed to reach ~50 pages in PDF format.
 import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 # Import the base structure
 import report_chapters
 
@@ -235,71 +239,29 @@ def expand():
         })
 
     # -------------------------------------------------------------------------
-    # 2. Expand Chapter 8 (Detail all 16 Seeded Integrity Rules)
+    # 2. Expand Chapter 8 (Detail all 45 Seeded Integrity Rules Across All Six Tables)
     # -------------------------------------------------------------------------
     ch8 = chapters[7] # Chapter 8
     
-    rule_profiles = [
-        ("RULE_ORPHAN_STAGING_STUDENT", "ORPHAN", "staging_enrollments", "student_id", "students", "student_id",
-         "Detects enrollment records in staging table referencing non-existent student IDs in the students parent table.",
-         '{"allow_null": false, "strategy": "RESTORE_PARENT"}', "CRITICAL"),
-        ("RULE_ORPHAN_STAGING_COURSE", "ORPHAN", "staging_enrollments", "course_id", "courses", "course_id",
-         "Detects enrollment records in staging table referencing non-existent course IDs in the courses parent table.",
-         '{"allow_null": false, "strategy": "RESTORE_PARENT"}', "CRITICAL"),
-        ("RULE_ORPHAN_STUDENT_DEPT", "ORPHAN", "students", "dept_id", "departments", "dept_id",
-         "Verifies that foreign key dept_id in students table correctly resolves to a registered department.",
-         '{"allow_null": true, "strategy": "MAP_PARENT"}', "HIGH"),
-        ("RULE_ORPHAN_COURSE_INSTRUCTOR", "ORPHAN", "courses", "instructor_id", "instructors", "instructor_id",
-         "Verifies that foreign key instructor_id in courses points to a valid active instructor.",
-         '{"allow_null": true, "strategy": "MAP_PARENT"}', "HIGH"),
-        ("RULE_DUP_STAGING_STUDENT_COURSE", "DUPLICATE", "staging_enrollments", "student_id, course_id", None, None,
-         "Identifies duplicate staging registration attempts where the same student is enrolled in the same course multiple times.",
-         '{"group_by": ["student_id", "course_id"], "keep": "FIRST"}', "HIGH"),
-        ("RULE_DUP_STUDENT_EMAIL", "DUPLICATE", "students", "email", None, None,
-         "Enforces unique candidate key constraint on student email addresses across the student registry.",
-         '{"group_by": ["email"], "case_sensitive": false}', "HIGH"),
-        ("RULE_NULL_STUDENT_NAME", "NULL_CHECK", "students", "student_name", None, None,
-         "Identifies student profiles with missing, NULL, or empty string names.",
-         '{"disallow_empty_string": true}', "CRITICAL"),
-        ("RULE_NULL_COURSE_NAME", "NULL_CHECK", "courses", "course_name", None, None,
-         "Ensures all academic courses possess a non-null, non-empty catalog name.",
-         '{"disallow_empty_string": true}', "HIGH"),
-        ("RULE_DOMAIN_STAGING_GRADE", "DOMAIN_CHECK", "staging_enrollments", "grade_marks", None, None,
-         "Validates that raw imported marks fall strictly within the allowable academic percentage interval [0.00, 100.00].",
-         '{"min_value": 0.00, "max_value": 100.00}', "HIGH"),
-        ("RULE_DOMAIN_STUDENT_AGE", "DOMAIN_CHECK", "students", "age", None, None,
-         "Enforces valid matriculation age boundaries for students [16, 65].",
-         '{"min_value": 16, "max_value": 65}', "MEDIUM"),
-        ("RULE_DOMAIN_STUDENT_GPA", "DOMAIN_CHECK", "students", "gpa", None, None,
-         "Validates that cumulative Grade Point Average falls within the standard 4.0 scale [0.00, 4.00].",
-         '{"min_value": 0.00, "max_value": 4.00}', "HIGH"),
-        ("RULE_DOMAIN_STUDENT_EMAIL", "DOMAIN_CHECK", "students", "email", None, None,
-         "Validates structural RFC-compliant email syntax using anchored regular expressions.",
-         '{"regex_pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$"}', "MEDIUM"),
-        ("RULE_DOMAIN_STAGING_STATUS", "DOMAIN_CHECK", "staging_enrollments", "status", None, None,
-         "Validates that staging enrollment status string matches permitted enumeration values.",
-         '{"allowed_values": ["ENROLLED", "COMPLETED", "DROPPED"]}', "MEDIUM"),
-        ("RULE_DOMAIN_ENROLLMENT_STATUS", "DOMAIN_CHECK", "enrollments", "status", None, None,
-         "Enforces valid production enrollment status domain enum states.",
-         '{"allowed_values": ["ENROLLED", "COMPLETED", "DROPPED"]}', "HIGH"),
-        ("RULE_DOMAIN_COURSE_CREDITS", "DOMAIN_CHECK", "courses", "credits", None, None,
-         "Verifies that course credits conform to curriculum bounds between 1 and 12 credit units.",
-         '{"min_value": 1, "max_value": 12}', "HIGH"),
-        ("RULE_DOMAIN_DEPT_BUDGET", "DOMAIN_CHECK", "departments", "budget", None, None,
-         "Guarantees that departmental operating budgets remain strictly non-negative (>= 0.00).",
-         '{"min_value": 0.00}', "HIGH")
-    ]
+    from backend.app.database.system_tables import ACADEMIC_INTEGRITY_RULES
 
     rule_table = [["Rule Code", "Category", "Target Table", "Target Column", "Severity", "Strategy"]]
-    for r in rule_profiles:
-        strat = "QUARANTINE / SET_DEFAULT" if "DOMAIN" in r[1] or "NULL" in r[1] else ("RESTORE / MAP" if r[1] == "ORPHAN" else "MERGE / DELETE")
-        rule_table.append([r[0], r[1], r[2], r[3], r[8], strat])
+    for r in ACADEMIC_INTEGRITY_RULES:
+        strat = (
+            "QUARANTINE" if r["target_table"] == "staging_enrollments" and r["rule_type"] == "ORPHAN"
+            else "MAP_PARENT" if r["rule_type"] == "ORPHAN"
+            else "DELETE / MERGE" if r["rule_type"] == "DUPLICATE"
+            else "SET_DEFAULT"
+        )
+        col_str = str(r["target_column"] or "-")
+        rule_table.append([r["rule_code"], r["rule_type"], r["target_table"], col_str, r["severity"], strat])
 
     ch8["sections"].append({
-        "title": "8.6 The Complete Catalog of 16 Seeded Integrity Rules",
+        "title": "8.6 The Complete Catalog of 45 Seeded Integrity Rules Across All Six Tables",
         "paragraphs": [
-            "The system initializes with 16 active integrity rules spanning all five theoretical categories. "
-            "Below is the complete rule configuration matrix:"
+            "The system initializes with 45 active, parameterized integrity rules spanning all four operational categories: ORPHAN referential checks (7 rules), DUPLICATE candidate key checks (7 rules), NULL completeness checks (14 rules), and DOMAIN constraint checks (17 rules).",
+            "The rule coverage spans all six database tables: departments (5 rules), instructors (6 rules), courses (7 rules), students (8 rules), enrollments (9 rules), and staging_enrollments (10 rules).",
+            "Below is the complete 45-rule integrity configuration matrix detailing target entities, monitored attributes, severity classifications, and autonomous self-healing strategies:"
         ],
         "table": {"data": rule_table, "widths": [140, 75, 95, 80, 50, 60]}
     })
