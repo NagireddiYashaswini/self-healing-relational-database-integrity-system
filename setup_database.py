@@ -27,7 +27,7 @@ DATABASE_DIR = PROJECT_ROOT / "database"
 
 SQL_FILES = [
     ("01_create_database.sql", "Creating database self_healing_test_db"),
-    ("02_create_tables.sql", "Creating 16 InnoDB tables, constraints, and triggers"),
+    ("02_create_tables.sql", "Creating 22 InnoDB tables, constraints, and triggers"),
     ("03_insert_sample_data.sql", "Inserting baseline academic dataset"),
     ("04_integrity_rules.sql", "Seeding integrity rules catalog"),
     ("05_demo_violations.sql", "Injecting controlled demo anomalies for scanner")

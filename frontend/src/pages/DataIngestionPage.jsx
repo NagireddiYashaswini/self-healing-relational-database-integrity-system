@@ -465,7 +465,7 @@ export const DataIngestionPage = () => {
                               <option value="999999">999999 - [Simulate Orphan Anomaly]</option>
                             </select>
                           </div>
-                        ) : col.data_type === 'enum' || col.name === 'status' ? (
+                        ) : selectedTable === 'enrollments' && col.name === 'status' ? (
                           <select
                             value={formData[col.name] || ''}
                             onChange={(e) => handleInputChange(col.name, e.target.value)}

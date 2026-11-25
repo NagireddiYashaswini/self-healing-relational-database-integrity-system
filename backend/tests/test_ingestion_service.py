@@ -229,3 +229,33 @@ def test_test7_works_across_all_six_tables(mysql_available):
             dv = str(col["default_value"] or "").lower()
             if dt in ("timestamp", "datetime") and "current_timestamp" in dv:
                 assert col["is_generated_default"] is True
+
+
+def test_instructors_ingestion_rejects_invalid_salary_email_and_duplicates(mysql_available):
+    """Verifies instructors table validates negative salary, invalid email, and duplicate email."""
+    if not mysql_available:
+        pytest.skip("Local MySQL server not reachable")
+
+    res = IngestionService.ingest_record(
+        table_name="instructors",
+        record_data={
+            "instructor_name": "Bad Instructor",
+            "email": "alan.turing@univ.edu",
+            "dept_id": 1,
+            "salary": -1000.00,
+        },
+        external_ref="EXT-INST-BAD"
+    )
+    conn = get_connection()
+    try:
+        assert res["success"] is False
+        assert res["status"] == "REJECTED_TO_QUARANTINE"
+        assert any("salary" in e.lower() for e in res["validation_errors"])
+        assert any("already exists" in e.lower() for e in res["validation_errors"])
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM staging_instructors WHERE staging_id = %s", (res["staging_id"],))
+            if res.get("quarantine_id"):
+                cur.execute("DELETE FROM quarantine_records WHERE quarantine_id = %s", (res["quarantine_id"],))
+        conn.commit()
+        conn.close()

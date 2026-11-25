@@ -58,7 +58,7 @@ def list_tables():
                 t_name = row["TABLE_NAME"]
                 
                 # Classification
-                if t_name.startswith("staging_") or t_name.startswith("legacy_"):
+                if t_name.startswith("staging_") or t_name.startswith("stage_") or t_name.startswith("legacy_"):
                     t_type = "STAGING"
                 elif t_name == "quarantine_records":
                     t_type = "QUARANTINE"
@@ -184,7 +184,7 @@ def _get_single_table_detail(cur, table_name: str) -> TableDetail:
     cur.execute(f"SELECT COUNT(*) AS c FROM `{table_name}`")
     row_count = cur.fetchone()["c"]
 
-    if table_name.startswith("staging_") or table_name.startswith("stage_"):
+    if table_name.startswith("staging_") or table_name.startswith("stage_") or table_name.startswith("legacy_"):
         t_type = "STAGING"
     elif table_name == "quarantine_records":
         t_type = "QUARANTINE"
@@ -327,8 +327,18 @@ def reset_database_data():
             all_tables = [list(r.values())[0] for r in cur.fetchall()]
 
             if "students" in all_tables and "staging_enrollments" in all_tables:
-                # Academic schema reset
+                # Academic schema reset across all 6 core tables & staging
+                if "enrollments" in all_tables:
+                    cur.execute("DELETE FROM `enrollments` WHERE `enrollment_id` >= 9000")
                 cur.execute("DELETE FROM `students` WHERE `student_id` >= 200")
+                if "courses" in all_tables:
+                    cur.execute("DELETE FROM `courses` WHERE `course_id` >= 900")
+                if "instructors" in all_tables:
+                    cur.execute("DELETE FROM `instructors` WHERE `instructor_id` >= 900")
+                if "classrooms" in all_tables:
+                    cur.execute("DELETE FROM `classrooms` WHERE `classroom_id` >= 900")
+                if "departments" in all_tables:
+                    cur.execute("DELETE FROM `departments` WHERE `dept_id` >= 900")
                 cur.execute("TRUNCATE TABLE `staging_enrollments`")
                 cur.execute("""
                     INSERT INTO `staging_enrollments` 
@@ -378,7 +388,8 @@ def inject_violations():
             all_tables = [list(r.values())[0] for r in cur.fetchall()]
 
             if "students" in all_tables and "staging_enrollments" in all_tables:
-                # Academic schema violation injection
+                # Academic schema violation injection across all core tables
+                cur.execute("SET FOREIGN_KEY_CHECKS = 0")
                 cur.execute("TRUNCATE TABLE `staging_enrollments`")
                 cur.execute("""
                     INSERT INTO `staging_enrollments` 
@@ -393,16 +404,58 @@ def inject_violations():
                         (7, 'EXT-1007', 105, 1, 'vikram.malhotra@univ.edu', '2026-09-01', 145.00, 'ENROLLED', 'Domain violation: Grade marks out of 0-100 range'),
                         (8, 'EXT-1008', 106, 3, 'ananya.roy@univ.edu', '2026-09-01', 85.00, 'SUSPENDED', 'Domain violation: Invalid status code')
                 """)
+                if "departments" in all_tables:
+                    cur.execute("DELETE FROM `departments` WHERE `dept_id` >= 900")
+                    cur.execute("""
+                        INSERT INTO `departments` (`dept_id`, `dept_code`, `dept_name`, `building`, `budget`)
+                        VALUES
+                            (903, '', 'Anonymous Interdisciplinary Center', 'Babbage Pavilion', 150000.00),
+                            (905, 'DEFICIT', 'Deficit Research Laboratory', 'Kelvin Underground Vault', -50000.00)
+                    """)
+                if "instructors" in all_tables:
+                    cur.execute("DELETE FROM `instructors` WHERE `instructor_id` >= 900")
+                    cur.execute("""
+                        INSERT INTO `instructors` (`instructor_id`, `instructor_name`, `email`, `dept_id`, `salary`, `hire_date`)
+                        VALUES
+                            (901, 'Dr. Ghost Professor', 'ghost.prof@univ.edu', 9999, 85000.00, '2024-01-15'),
+                            (905, 'Dr. Insolvent Scholar', 'negative.salary@univ.edu', 1, -15000.00, '2025-01-10')
+                    """)
+                if "courses" in all_tables:
+                    cur.execute("DELETE FROM `courses` WHERE `course_id` >= 900")
+                    cur.execute("""
+                        INSERT INTO `courses` (`course_id`, `course_code`, `course_name`, `credits`, `dept_id`, `instructor_id`)
+                        VALUES
+                            (901, 'GHOST101', 'Ghost Department Course', 3, 9999, 1),
+                            (906, 'EXTREME101', 'Super Intensive Dissertation Study', 24, 1, 1)
+                    """)
                 cur.execute("DELETE FROM `students` WHERE `student_id` >= 200")
                 cur.execute("""
                     INSERT INTO `students` (`student_id`, `student_name`, `email`, `age`, `gpa`, `dept_id`, `enrollment_year`)
                     VALUES 
+                        (200, 'Lost Student', 'lost.student@univ.edu', 20, 3.50, 9999, 2024),
                         (201, 'Walter Elder', 'walter.elder@univ.edu', 140, 3.20, 1, 2024),
                         (202, 'Luna Genius', 'luna.genius@univ.edu', 20, 4.95, 1, 2025),
                         (203, 'Alex Malformed', 'alex.malformed@no-tld', 22, 3.10, 2, 2023),
-                        (204, '', 'ghost.name@univ.edu', 21, 2.90, 3, 2024)
+                        (204, '', 'ghost.name@univ.edu', 21, 2.90, 3, 2024),
+                        (205, 'Ravi Duplicate', 'ravi.kumar@univ.edu', 22, 3.50, 1, 2024)
                 """)
-                count = 10
+                if "enrollments" in all_tables:
+                    cur.execute("DELETE FROM `enrollments` WHERE `enrollment_id` >= 9000")
+                    cur.execute("""
+                        INSERT INTO `enrollments` (`enrollment_id`, `student_id`, `course_id`, `enrolled_on`, `grade_marks`, `status`)
+                        VALUES
+                            (9001, 9999, 1, '2026-09-01', 85.00, 'ENROLLED'),
+                            (9005, 103, 1, '2026-09-01', 180.00, 'ENROLLED')
+                    """)
+                if "classrooms" in all_tables:
+                    cur.execute("DELETE FROM `classrooms` WHERE `classroom_id` >= 900")
+                    cur.execute("""
+                        INSERT INTO `classrooms` (`classroom_id`, `room_number`, `building`, `capacity`, `dept_id`)
+                        VALUES
+                            (901, 'VOID-901', 'Phantom Hall', 999, 9999)
+                    """)
+                cur.execute("SET FOREIGN_KEY_CHECKS = 1")
+                count = 21
             else:
                 # Retail schema: Anomalies are already embedded in customers, products, orders, order_items, payments, inventory
                 count = 11

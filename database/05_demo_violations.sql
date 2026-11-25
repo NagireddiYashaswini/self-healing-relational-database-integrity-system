@@ -179,4 +179,13 @@ VALUES
     -- Anomaly 38: Mandatory Fields Missing (Both student_id and course_id are NULL)
     (10, 'EXT-1010', NULL, NULL, 'unassigned@univ.edu', '2026-09-01', 50.00, 'ENROLLED', 'Mandatory foreign keys missing');
 
+-- -----------------------------------------------------------------------------
+-- 7. CLASSROOMS ANOMALIES (Orphan dept, capacity out of range)
+-- -----------------------------------------------------------------------------
+DELETE FROM `classrooms` WHERE `classroom_id` >= 900;
+
+INSERT INTO `classrooms` (`classroom_id`, `room_number`, `building`, `capacity`, `dept_id`)
+VALUES
+    (901, 'VOID-901', 'Phantom Hall', 999, 9999);
+
 SET FOREIGN_KEY_CHECKS = 1;

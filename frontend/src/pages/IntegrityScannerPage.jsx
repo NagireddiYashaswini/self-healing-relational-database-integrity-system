@@ -32,7 +32,7 @@ const CORE_SIX_TABLES = [
   { name: 'courses', role: 'Child of depts & instructors', description: 'Academic courses, credit limits, assigned faculty' },
   { name: 'students', role: 'Child of departments', description: 'Enrolled students, GPA, age domain, enrollment year' },
   { name: 'enrollments', role: 'Junction (student x course)', description: 'Course enrollments, grade marks, academic standing' },
-  { name: 'staging_enrollments', role: 'Staging Intake Entity', description: 'External unvalidated batch records pending migration' },
+  { name: 'classrooms', role: 'Child of departments', description: 'Lecture halls, seating capacities, and department allocations' },
 ];
 
 export const IntegrityScannerPage = () => {
@@ -196,7 +196,8 @@ export const IntegrityScannerPage = () => {
                 <button
                   onClick={() => {
                     setScanType('FULL');
-                    setSelectedTables(availableTables.map(t => t.table_name));
+                    const coreNames = CORE_SIX_TABLES.map(c => c.name);
+                    setSelectedTables(availableTables.filter(t => coreNames.includes(t.table_name)).map(t => t.table_name));
                   }}
                   className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
                     scanType === 'FULL' ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600'
@@ -250,7 +251,10 @@ export const IntegrityScannerPage = () => {
           <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
             <span>{selectedTables.length} tables selected</span>
             <button
-              onClick={() => setSelectedTables(availableTables.map(t => t.table_name))}
+              onClick={() => {
+                const coreNames = CORE_SIX_TABLES.map(c => c.name);
+                setSelectedTables(availableTables.filter(t => coreNames.includes(t.table_name)).map(t => t.table_name));
+              }}
               className="text-indigo-600 hover:underline font-medium text-xs"
             >
               Select All 6 Tables

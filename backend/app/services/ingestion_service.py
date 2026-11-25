@@ -202,6 +202,9 @@ class IngestionService:
                     valid_staging_cols.append("external_ref")
                     valid_staging_vals.append(external_ref)
 
+                if not valid_staging_cols:
+                    raise ValueError(f"No valid columns provided for ingestion into '{table_name}'.")
+
                 insert_staging_sql = f"""
                     INSERT INTO `{staging_table}` ({', '.join([f'`{c}`' for c in valid_staging_cols])})
                     VALUES ({', '.join(['%s'] * len(valid_staging_cols))})
@@ -276,6 +279,23 @@ class IngestionService:
                             if cur.fetchone()["c"] > 0:
                                 validation_errors.append(f"Student email '{email}' already exists in production (Uniqueness violation).")
 
+                elif table_name == "instructors":
+                    if "salary" in cleaned_data:
+                        try:
+                            sal_val = float(cleaned_data["salary"])
+                            if sal_val < 0:
+                                validation_errors.append(f"Instructor salary cannot be negative ({sal_val}).")
+                        except ValueError:
+                            validation_errors.append("Instructor salary must be a valid number.")
+                    if "email" in cleaned_data and cleaned_data["email"]:
+                        email = str(cleaned_data["email"]).strip()
+                        if "@" not in email or "." not in email:
+                            validation_errors.append(f"Email '{email}' has invalid syntax.")
+                        else:
+                            cur.execute("SELECT COUNT(*) as c FROM instructors WHERE email = %s", (email,))
+                            if cur.fetchone()["c"] > 0:
+                                validation_errors.append(f"Instructor email '{email}' already exists in production (Uniqueness violation).")
+
                 elif table_name == "departments":
                     if "budget" in cleaned_data:
                         try:
@@ -288,6 +308,10 @@ class IngestionService:
                         cur.execute("SELECT COUNT(*) as c FROM departments WHERE dept_code = %s", (cleaned_data["dept_code"],))
                         if cur.fetchone()["c"] > 0:
                             validation_errors.append(f"Department code '{cleaned_data['dept_code']}' already exists.")
+                    if "dept_name" in cleaned_data and cleaned_data["dept_name"]:
+                        cur.execute("SELECT COUNT(*) as c FROM departments WHERE dept_name = %s", (cleaned_data["dept_name"],))
+                        if cur.fetchone()["c"] > 0:
+                            validation_errors.append(f"Department name '{cleaned_data['dept_name']}' already exists.")
 
                 elif table_name == "courses":
                     if "credits" in cleaned_data:

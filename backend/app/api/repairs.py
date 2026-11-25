@@ -127,7 +127,7 @@ def execute_repair(payload: RepairExecuteRequest):
             )
 
         # Destructive safety check
-        if strat_str in ["DELETE_RECORD", "QUARANTINE"] and not payload.confirmed:
+        if strat_str in ["DELETE_RECORD", "QUARANTINE", "MERGE_DUPLICATE", "MERGE_DUPLICATION"] and not payload.confirmed:
             raise HTTPException(
                 status_code=400,
                 detail="Destructive repair strategy requires explicit user confirmation (confirmed=True)."
@@ -175,9 +175,10 @@ def list_executions(limit: int = 50):
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT e.*, i.table_name, i.record_id, i.category
+                SELECT e.*, i.table_name, i.record_id, i.category, r.strategy
                 FROM repair_executions e
                 JOIN integrity_issues i ON e.issue_id = i.issue_id
+                LEFT JOIN repair_recommendations r ON e.issue_id = r.issue_id
                 ORDER BY e.executed_at DESC
                 LIMIT %s
             """, (limit,))

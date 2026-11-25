@@ -278,8 +278,7 @@ export const RecoveryCenterPage = () => {
       setRollingBack(true);
       await recoveryApi.rollback({
         checkpoint_id: selectedCkpt.checkpoint_id,
-        operator: 'ADMIN_USER',
-        reason: 'Operator-initiated table state rollback from Recovery Center.'
+        confirmed: true,
       });
       setRollbackConfirmOpen(false);
       setSelectedCkpt(null);
@@ -578,9 +577,11 @@ export const RecoveryCenterPage = () => {
                       <tr key={e.execution_id} className="hover:bg-slate-50">
                         <td className="py-1.5 px-3 text-indigo-600 font-bold">{e.execution_id}</td>
                         <td className="py-1.5 px-3 text-slate-600">{e.transaction_id}</td>
-                        <td className="py-1.5 px-3 font-sans font-semibold text-slate-800">{e.strategy}</td>
+                        <td className="py-1.5 px-3 font-sans font-semibold text-slate-800">{e.strategy || e.category || 'REPAIR'}</td>
                         <td className="py-1.5 px-3">
-                          <span className="text-emerald-700 font-bold">SUCCESS</span>
+                          <span className={`font-bold ${e.status === 'SUCCESS' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            {e.status || 'SUCCESS'}
+                          </span>
                         </td>
                         <td className="py-1.5 px-3 text-slate-500">{e.execution_time_ms} ms</td>
                         <td className="py-1.5 px-3 text-slate-600 max-w-sm truncate" title={e.sql_executed}>
@@ -640,7 +641,7 @@ export const RecoveryCenterPage = () => {
                       <th className="py-2.5 px-3">Name</th>
                       <th className="py-2.5 px-3">Target Table</th>
                       <th className="py-2.5 px-3">Type</th>
-                      <th className="py-2.5 px-3">Row Filter</th>
+                      <th className="py-2.5 px-3">Rows Captured</th>
                       <th className="py-2.5 px-3">Created At</th>
                       <th className="py-2.5 px-3 text-right">Rollback Action</th>
                     </tr>
@@ -656,7 +657,7 @@ export const RecoveryCenterPage = () => {
                             {c.checkpoint_type}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 font-mono text-slate-500">{c.row_id_filter || 'Full Table'}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500">{c.rows_captured ?? 0} rows</td>
                         <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">{new Date(c.created_at).toLocaleString()}</td>
                         <td className="py-2.5 px-3 text-right">
                           <Button

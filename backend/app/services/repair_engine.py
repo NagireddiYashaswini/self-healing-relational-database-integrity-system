@@ -683,6 +683,14 @@ class RepairEngine:
             sql_statements_executed = []
             with conn.cursor() as cur:
                 cur.execute("SAVEPOINT pre_repair_step;")
+                col_name = issue.get("column_name")
+                cur.execute("""
+                    SELECT rule_code, parent_table, parent_column, parameters_json
+                    FROM integrity_rules
+                    WHERE rule_id = %s OR rule_code = %s
+                    LIMIT 1
+                """, (issue.get("rule_id"), issue.get("rule_code")))
+                rule_meta = cur.fetchone()
 
                 if strategy == "QUARANTINE":
                     # Insert into quarantine
@@ -708,9 +716,24 @@ class RepairEngine:
                     sql_statements_executed.append(f"DELETE FROM `{table_name}` WHERE `{pk_col}` = {record_id}")
 
                 elif strategy in ("RESTORE_PARENT", "RESTORE", "restore_parent", "restore"):
-                    parent_table = validate_identifier(issue.get("parent_table") or (rule_meta.get("parent_table") if rule_meta else None) or "departments")
-                    parent_col = validate_identifier(issue.get("parent_column") or (rule_meta.get("parent_column") if rule_meta else None) or f"{parent_table.rstrip('s')}_id")
-                    missing_id = before_row.get(col_name) or issue.get("invalid_value")
+                    parent_table = issue.get("parent_table") or (rule_meta.get("parent_table") if rule_meta else None)
+                    parent_col = issue.get("parent_column") or (rule_meta.get("parent_column") if rule_meta else None)
+                    if (not parent_table or not parent_col) and col_name:
+                        cur.execute("""
+                            SELECT REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+                            FROM information_schema.KEY_COLUMN_USAGE
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = %s AND COLUMN_NAME = %s
+                              AND REFERENCED_TABLE_NAME IS NOT NULL
+                            LIMIT 1
+                        """, (table_name, col_name))
+                        fk_res = cur.fetchone()
+                        if fk_res:
+                            parent_table = fk_res["REFERENCED_TABLE_NAME"]
+                            parent_col = fk_res["REFERENCED_COLUMN_NAME"]
+                    parent_table = validate_identifier(parent_table or "departments")
+                    parent_col = validate_identifier(parent_col or f"{parent_table.rstrip('s')}_id")
+                    missing_id = (before_row.get(col_name) if col_name else None) or issue.get("invalid_value")
 
                     cur.execute("SELECT * FROM quarantine_records WHERE source_table = %s AND source_pk_value = %s", (parent_table, str(missing_id)))
                     q_parent = cur.fetchone()
@@ -832,8 +855,9 @@ class RepairEngine:
                     raise ValueError(f"Unsupported repair strategy: {strategy}")
 
                 # 6. Verification check: Verify state after repair
+                destructive_strategies = ["DELETE_RECORD", "QUARANTINE", "MERGE_DUPLICATE", "MERGE_DUPLICATION"]
                 after_row = None
-                if strategy not in ["DELETE_RECORD", "QUARANTINE"]:
+                if strategy not in destructive_strategies:
                     cur.execute(f"SELECT * FROM `{table_name}` WHERE `{pk_col}` = %s", (record_id,))
                     after_row = cur.fetchone()
                 else:
@@ -853,8 +877,8 @@ class RepairEngine:
                     (issue_id,)
                 )
 
-                # If this was a destructive repair (QUARANTINE or DELETE_RECORD), any other open issues on this row are now also resolved
-                if strategy in ["DELETE_RECORD", "QUARANTINE"]:
+                # If this was a destructive repair, any other open issues on this row are now also resolved
+                if strategy in destructive_strategies:
                     cur.execute(
                         "UPDATE integrity_issues SET status = 'REPAIRED', repaired_at = NOW() WHERE table_name = %s AND record_id = %s AND status != 'REPAIRED'",
                         (table_name, str(record_id))

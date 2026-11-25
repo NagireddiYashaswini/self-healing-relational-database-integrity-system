@@ -7,8 +7,13 @@
 
 USE `self_healing_test_db`;
 
--- 1. Remove temporary demo anomaly students (ID >= 200)
+-- 1. Remove temporary demo anomaly records across all 6 core tables
+DELETE FROM `enrollments` WHERE `enrollment_id` >= 9000;
 DELETE FROM `students` WHERE `student_id` >= 200;
+DELETE FROM `courses` WHERE `course_id` >= 900;
+DELETE FROM `instructors` WHERE `instructor_id` >= 900;
+DELETE FROM `classrooms` WHERE `classroom_id` >= 900;
+DELETE FROM `departments` WHERE `dept_id` >= 900;
 
 -- 2. Clear staging enrollments
 TRUNCATE TABLE `staging_enrollments`;

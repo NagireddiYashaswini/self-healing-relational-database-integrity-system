@@ -417,6 +417,51 @@ INSERT INTO `integrity_rules` (
         'staging_enrollments', 'student_email', NULL, NULL,
         '{"regex_pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"}',
         'MEDIUM', TRUE
+    ),
+    (
+        'RULE_ORPHAN_CLASSROOM_DEPT',
+        'Classroom Missing Department Reference',
+        'Verifies that foreign key dept_id in classrooms resolves to a registered department.',
+        'ORPHAN',
+        'classrooms', 'dept_id', 'departments', 'dept_id',
+        '{"allow_null": true, "strategy": "MAP_PARENT"}',
+        'HIGH', TRUE
+    ),
+    (
+        'RULE_DUP_CLASSROOM_ROOM',
+        'Duplicate Classroom Room Number',
+        'Enforces logical uniqueness for classroom room numbers (e.g., CS-101).',
+        'DUPLICATE',
+        'classrooms', 'room_number', NULL, NULL,
+        '{"group_by": ["room_number"]}',
+        'HIGH', TRUE
+    ),
+    (
+        'RULE_NULL_CLASSROOM_ROOM',
+        'Mandatory Classroom Room Number',
+        'Ensures classroom records contain a non-empty room_number.',
+        'NULL_CHECK',
+        'classrooms', 'room_number', NULL, NULL,
+        '{"disallow_empty_string": true}',
+        'CRITICAL', TRUE
+    ),
+    (
+        'RULE_NULL_CLASSROOM_BUILDING',
+        'Mandatory Classroom Building',
+        'Ensures classroom records specify a non-empty building name.',
+        'NULL_CHECK',
+        'classrooms', 'building', NULL, NULL,
+        '{"disallow_empty_string": true}',
+        'HIGH', TRUE
+    ),
+    (
+        'RULE_DOMAIN_CLASSROOM_CAPACITY',
+        'Classroom Capacity Range (1-500)',
+        'Validates that classroom seating capacity falls within 1 to 500 seats.',
+        'DOMAIN_CHECK',
+        'classrooms', 'capacity', NULL, NULL,
+        '{"min_value": 1, "max_value": 500, "allow_null": false}',
+        'HIGH', TRUE
     )
 ON DUPLICATE KEY UPDATE 
     `name` = VALUES(`name`),

@@ -495,12 +495,11 @@ class IntegrityScanner:
                 parent_col = validate_identifier(rule["parent_column"])
                 allow_null = params.get("allow_null", False)
 
-                null_filter = f"AND t.`{target_col}` IS NOT NULL" if not allow_null else f"AND t.`{target_col}` IS NOT NULL"
                 query = f"""
                     SELECT t.`{pk_col}` AS pk_val, t.`{target_col}` AS fk_val
                     FROM `{target_table}` t
                     LEFT JOIN `{parent_table}` p ON t.`{target_col}` = p.`{parent_col}`
-                    WHERE p.`{parent_col}` IS NULL {null_filter}
+                    WHERE p.`{parent_col}` IS NULL AND t.`{target_col}` IS NOT NULL
                 """
                 cur.execute(query)
                 rows = cur.fetchall()

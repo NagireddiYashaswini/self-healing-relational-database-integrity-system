@@ -175,7 +175,7 @@ class DependencyAnalyzer:
 
         try:
             # 1. Schema-level neighborhood analysis
-            neighborhood = self.get_table_neighborhood(table_name)
+            neighborhood = self.get_table_neighborhood(table_name) or {}
             direct_children = sorted(neighborhood.get("direct_children", []))
             all_descendants = sorted(neighborhood.get("descendants", []))
             downstream_tables = sorted([t for t in all_descendants if t not in direct_children])

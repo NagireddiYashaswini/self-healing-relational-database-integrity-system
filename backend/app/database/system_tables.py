@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS `integrity_issues` (
 CREATE TABLE IF NOT EXISTS `repair_recommendations` (
     `recommendation_id` INT AUTO_INCREMENT PRIMARY KEY,
     `issue_id` VARCHAR(50) NOT NULL,
-    `strategy` ENUM('RESTORE_PARENT', 'MAP_PARENT', 'QUARANTINE', 'DELETE_RECORD', 'MERGE_DUPLICATE', 'SET_DEFAULT', 'MANUAL_INTERVENTION') NOT NULL,
+    `strategy` ENUM('RESTORE_PARENT', 'MAP_PARENT', 'QUARANTINE', 'DELETE_RECORD', 'MERGE_DUPLICATE', 'MERGE_DUPLICATION', 'SET_DEFAULT', 'MANUAL_INTERVENTION') NOT NULL,
     `problem_description` TEXT NOT NULL,
     `proposed_action` TEXT NOT NULL,
     `reason` TEXT NOT NULL,
@@ -901,6 +901,71 @@ ACADEMIC_INTEGRITY_RULES = [
             "regex_pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
         },
         "severity": "MEDIUM",
+        "is_enabled": True
+    },
+    {
+        "rule_code": "RULE_ORPHAN_CLASSROOM_DEPT",
+        "name": "Classroom Missing Department Reference",
+        "description": "Verifies that foreign key dept_id in classrooms resolves to a registered department.",
+        "rule_type": "ORPHAN",
+        "target_table": "classrooms",
+        "target_column": "dept_id",
+        "parent_table": "departments",
+        "parent_column": "dept_id",
+        "parameters_json": {"allow_null": True, "strategy": "MAP_PARENT"},
+        "severity": "HIGH",
+        "is_enabled": True
+    },
+    {
+        "rule_code": "RULE_DUP_CLASSROOM_ROOM",
+        "name": "Duplicate Classroom Room Number",
+        "description": "Enforces logical uniqueness for classroom room numbers (e.g., CS-101).",
+        "rule_type": "DUPLICATE",
+        "target_table": "classrooms",
+        "target_column": "room_number",
+        "parent_table": None,
+        "parent_column": None,
+        "parameters_json": {"group_by": ["room_number"]},
+        "severity": "HIGH",
+        "is_enabled": True
+    },
+    {
+        "rule_code": "RULE_NULL_CLASSROOM_ROOM",
+        "name": "Mandatory Classroom Room Number",
+        "description": "Ensures classroom records contain a non-empty room_number.",
+        "rule_type": "NULL_CHECK",
+        "target_table": "classrooms",
+        "target_column": "room_number",
+        "parent_table": None,
+        "parent_column": None,
+        "parameters_json": {"disallow_empty_string": True},
+        "severity": "CRITICAL",
+        "is_enabled": True
+    },
+    {
+        "rule_code": "RULE_NULL_CLASSROOM_BUILDING",
+        "name": "Mandatory Classroom Building",
+        "description": "Ensures classroom records specify a non-empty building name.",
+        "rule_type": "NULL_CHECK",
+        "target_table": "classrooms",
+        "target_column": "building",
+        "parent_table": None,
+        "parent_column": None,
+        "parameters_json": {"disallow_empty_string": True},
+        "severity": "HIGH",
+        "is_enabled": True
+    },
+    {
+        "rule_code": "RULE_DOMAIN_CLASSROOM_CAPACITY",
+        "name": "Classroom Capacity Range (1-500)",
+        "description": "Validates that classroom seating capacity falls within 1 to 500 seats.",
+        "rule_type": "DOMAIN_CHECK",
+        "target_table": "classrooms",
+        "target_column": "capacity",
+        "parent_table": None,
+        "parent_column": None,
+        "parameters_json": {"min_value": 1, "max_value": 500, "allow_null": False},
+        "severity": "HIGH",
         "is_enabled": True
     }
 ]

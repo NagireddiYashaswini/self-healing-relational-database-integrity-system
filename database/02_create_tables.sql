@@ -14,8 +14,8 @@ USE `self_healing_test_db`;
 -- 1. Departments Table
 CREATE TABLE IF NOT EXISTS `departments` (
     `dept_id` INT AUTO_INCREMENT PRIMARY KEY,
-    `dept_code` VARCHAR(20) NOT NULL UNIQUE,
-    `dept_name` VARCHAR(100) NOT NULL UNIQUE,
+    `dept_code` VARCHAR(20) NOT NULL,
+    `dept_name` VARCHAR(100) NOT NULL,
     `building` VARCHAR(100) NULL,
     `budget` DECIMAL(12, 2) NOT NULL DEFAULT 100000.00,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS `departments` (
 CREATE TABLE IF NOT EXISTS `instructors` (
     `instructor_id` INT AUTO_INCREMENT PRIMARY KEY,
     `instructor_name` VARCHAR(100) NOT NULL,
-    `email` VARCHAR(150) NOT NULL UNIQUE,
+    `email` VARCHAR(150) NOT NULL,
     `dept_id` INT NULL,
     `salary` DECIMAL(10, 2) NOT NULL DEFAULT 50000.00,
     `hire_date` DATE NULL,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS `instructors` (
 -- 3. Courses Table
 CREATE TABLE IF NOT EXISTS `courses` (
     `course_id` INT AUTO_INCREMENT PRIMARY KEY,
-    `course_code` VARCHAR(20) NOT NULL UNIQUE,
+    `course_code` VARCHAR(20) NOT NULL,
     `course_name` VARCHAR(150) NOT NULL,
     `credits` INT NOT NULL DEFAULT 3,
     `dept_id` INT NULL,
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS `enrollments` (
 -- 6. Classrooms Table
 CREATE TABLE IF NOT EXISTS `classrooms` (
     `classroom_id` INT AUTO_INCREMENT PRIMARY KEY,
-    `room_number` VARCHAR(50) NOT NULL UNIQUE,
+    `room_number` VARCHAR(50) NOT NULL,
     `building` VARCHAR(100) NOT NULL,
     `capacity` INT NOT NULL DEFAULT 30,
     `dept_id` INT NULL,
@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS `integrity_rules` (
     `parent_table` VARCHAR(100) NULL,
     `parent_column` VARCHAR(100) NULL,
     `parameters_json` LONGTEXT NULL,
-    `severity` ENUM('CRITICAL', 'HIGH', 'LOW') NOT NULL DEFAULT 'HIGH',
+    `severity` ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL') NOT NULL DEFAULT 'HIGH',
     `is_enabled` BOOLEAN NOT NULL DEFAULT TRUE,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -257,8 +257,8 @@ CREATE TABLE IF NOT EXISTS `integrity_issues` (
     `scan_id` VARCHAR(50) NOT NULL,
     `rule_id` INT NULL,
     `rule_code` VARCHAR(50) NOT NULL,
-    `category` ENUM('ORPHAN', 'DUPLICATE', 'NULL_VIOLATION', 'DOMAIN_VIOLATION', 'RELATIONAL_VIOLATION') NOT NULL,
-    `severity` ENUM('CRITICAL', 'HIGH', 'LOW') NOT NULL DEFAULT 'HIGH',
+    `category` ENUM('ORPHAN', 'DUPLICATE', 'NULL_VIOLATION', 'DOMAIN_VIOLATION', 'RELATIONAL_VIOLATION', 'SYSTEM_INTEGRITY') NOT NULL,
+    `severity` ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL') NOT NULL DEFAULT 'HIGH',
     `table_name` VARCHAR(100) NOT NULL,
     `record_id` VARCHAR(100) NOT NULL,
     `column_name` VARCHAR(100) NULL,
@@ -277,12 +277,12 @@ CREATE TABLE IF NOT EXISTS `integrity_issues` (
 CREATE TABLE IF NOT EXISTS `repair_recommendations` (
     `recommendation_id` INT AUTO_INCREMENT PRIMARY KEY,
     `issue_id` VARCHAR(50) NOT NULL,
-    `strategy` ENUM('RESTORE_PARENT', 'MAP_PARENT', 'QUARANTINE', 'DELETE_RECORD', 'MERGE_DUPLICATE', 'SET_DEFAULT', 'MANUAL_INTERVENTION') NOT NULL,
+    `strategy` ENUM('RESTORE_PARENT', 'MAP_PARENT', 'QUARANTINE', 'DELETE_RECORD', 'MERGE_DUPLICATE', 'MERGE_DUPLICATION', 'SET_DEFAULT', 'MANUAL_INTERVENTION') NOT NULL,
     `problem_description` TEXT NOT NULL,
     `proposed_action` TEXT NOT NULL,
     `reason` TEXT NOT NULL,
     `expected_impact` TEXT NOT NULL,
-    `risk_level` ENUM('CRITICAL', 'HIGH', 'LOW') NOT NULL DEFAULT 'HIGH',
+    `risk_level` ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL') NOT NULL DEFAULT 'HIGH',
     `is_reversible` BOOLEAN NOT NULL DEFAULT TRUE,
     `requires_approval` BOOLEAN NOT NULL DEFAULT TRUE,
     `approval_status` ENUM('PENDING', 'APPROVED', 'REJECTED') NOT NULL DEFAULT 'PENDING',
