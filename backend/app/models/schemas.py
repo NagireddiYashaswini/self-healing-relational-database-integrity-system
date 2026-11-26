@@ -74,8 +74,8 @@ class RuleTypeEnum(str, Enum):
 class SeverityEnum(str, Enum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
     LOW = "LOW"
-    MEDIUM = "HIGH"
 
 class IssueStatusEnum(str, Enum):
     OPEN = "OPEN"
@@ -126,6 +126,7 @@ class ScanTriggerRequest(BaseModel):
     scan_type: str = "FULL" # 'FULL' or 'TABLE'
     target_tables: Optional[List[str]] = None
     rule_codes: Optional[List[str]] = None
+    rule_types: Optional[List[str]] = None
 
 class ScanSummary(BaseModel):
     scan_id: str

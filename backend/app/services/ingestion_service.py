@@ -194,6 +194,21 @@ class IngestionService:
                 cur.execute(f"DESCRIBE `{staging_table}`")
                 existing_staging_cols = {r["Field"] for r in cur.fetchall()}
 
+                # Auto-ensure staging status and error columns exist
+                if "validation_status" not in existing_staging_cols:
+                    try:
+                        cur.execute(f"ALTER TABLE `{staging_table}` ADD COLUMN `validation_status` ENUM('PENDING', 'VALID', 'REJECTED', 'QUARANTINED') DEFAULT 'PENDING'")
+                        existing_staging_cols.add("validation_status")
+                    except Exception as e:
+                        logger.warning(f"Could not auto-add validation_status to {staging_table}: {e}")
+
+                if "validation_error" not in existing_staging_cols:
+                    try:
+                        cur.execute(f"ALTER TABLE `{staging_table}` ADD COLUMN `validation_error` TEXT NULL")
+                        existing_staging_cols.add("validation_error")
+                    except Exception as e:
+                        logger.warning(f"Could not auto-add validation_error to {staging_table}: {e}")
+
                 # Match staging columns with cleaned_data
                 valid_staging_cols = [c for c in cleaned_data.keys() if c in existing_staging_cols]
                 valid_staging_vals = [cleaned_data[c] for c in valid_staging_cols]
@@ -365,8 +380,24 @@ class IngestionService:
                     cur.execute(f"INSERT INTO `{table_name}` ({prod_col_names}) VALUES ({prod_placeholders})", tuple(prod_vals))
                     prod_id = cur.lastrowid
 
-                    # Update staging table
-                    cur.execute(f"UPDATE `{staging_table}` SET validation_status = 'VALID', validation_error = NULL WHERE staging_id = %s", (staging_id,))
+                    # Update staging table safely based on available columns
+                    update_clauses = []
+                    update_vals = []
+                    if "validation_status" in existing_staging_cols:
+                        update_clauses.append("`validation_status` = %s")
+                        update_vals.append("VALID")
+                    elif "ingestion_status" in existing_staging_cols:
+                        update_clauses.append("`ingestion_status` = %s")
+                        update_vals.append("VALIDATED")
+
+                    if "validation_error" in existing_staging_cols:
+                        update_clauses.append("`validation_error` = NULL")
+                    elif "validation_errors" in existing_staging_cols:
+                        update_clauses.append("`validation_errors` = NULL")
+
+                    if update_clauses:
+                        update_vals.append(staging_id)
+                        cur.execute(f"UPDATE `{staging_table}` SET {', '.join(update_clauses)} WHERE staging_id = %s", tuple(update_vals))
                     conn.commit()
 
                     AuditService.log_event(
@@ -390,7 +421,25 @@ class IngestionService:
                 # 5. If INVALID -> Mark staging as REJECTED and archive into quarantine_records
                 else:
                     err_msg = "; ".join(validation_errors)
-                    cur.execute(f"UPDATE `{staging_table}` SET validation_status = 'REJECTED', validation_error = %s WHERE staging_id = %s", (err_msg, staging_id))
+                    update_clauses = []
+                    update_vals = []
+                    if "validation_status" in existing_staging_cols:
+                        update_clauses.append("`validation_status` = %s")
+                        update_vals.append("REJECTED")
+                    elif "ingestion_status" in existing_staging_cols:
+                        update_clauses.append("`ingestion_status` = %s")
+                        update_vals.append("REJECTED")
+
+                    if "validation_error" in existing_staging_cols:
+                        update_clauses.append("`validation_error` = %s")
+                        update_vals.append(err_msg)
+                    elif "validation_errors" in existing_staging_cols:
+                        update_clauses.append("`validation_errors` = %s")
+                        update_vals.append(err_msg)
+
+                    if update_clauses:
+                        update_vals.append(staging_id)
+                        cur.execute(f"UPDATE `{staging_table}` SET {', '.join(update_clauses)} WHERE staging_id = %s", tuple(update_vals))
                     
                     # Insert into quarantine_records
                     cur.execute("""

@@ -96,7 +96,7 @@ export const IntegrityScannerPage = () => {
       const payload = {
         scan_type: scanType,
         target_tables: scanType === 'TABLE' ? selectedTables : null,
-        rule_codes: selectedRules.length > 0 ? selectedRules : null,
+        rule_codes: selectedRules,
       };
       const res = await scansApi.triggerScan(payload);
       setScanResult(res.data);
@@ -178,7 +178,7 @@ export const IntegrityScannerPage = () => {
             loading={isScanning}
             onClick={handleExecuteScan}
           >
-            {isScanning ? 'Scanning All Tables...' : 'Run Full Integrity Scan'}
+            {isScanning ? 'Scanning All Tables...' : `Run Integrity Scan (${selectedRules.length} Rules)`}
           </Button>
         </div>
       </div>
@@ -269,9 +269,84 @@ export const IntegrityScannerPage = () => {
               <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" /> 2. Active Rule Set
               </span>
-              <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+              <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${
+                selectedRules.length > 0
+                  ? 'text-indigo-600 bg-indigo-50 border-indigo-200'
+                  : 'text-amber-700 bg-amber-50 border-amber-300'
+              }`}>
                 {selectedRules.length} / {rules.length} Active Rules
               </span>
+            </div>
+
+            {/* Quick Category Presets */}
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-1 text-[11px]">
+              <span className="text-slate-500 font-semibold mr-1">Presets:</span>
+              <button
+                type="button"
+                onClick={() => setSelectedRules(rules.map(r => r.rule_code))}
+                className={`px-1.5 py-0.5 rounded border transition-colors ${
+                  selectedRules.length === rules.length
+                    ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                All ({rules.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRules(rules.filter(r => r.rule_type === 'ORPHAN').map(r => r.rule_code))}
+                className={`px-1.5 py-0.5 rounded border transition-colors ${
+                  selectedRules.length > 0 && selectedRules.every(code => rules.find(r => r.rule_code === code)?.rule_type === 'ORPHAN') && selectedRules.length === rules.filter(r => r.rule_type === 'ORPHAN').length
+                    ? 'bg-rose-600 text-white border-rose-600 font-bold'
+                    : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
+                }`}
+              >
+                Orphan ({rules.filter(r => r.rule_type === 'ORPHAN').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRules(rules.filter(r => r.rule_type === 'DUPLICATE').map(r => r.rule_code))}
+                className={`px-1.5 py-0.5 rounded border transition-colors ${
+                  selectedRules.length > 0 && selectedRules.every(code => rules.find(r => r.rule_code === code)?.rule_type === 'DUPLICATE') && selectedRules.length === rules.filter(r => r.rule_type === 'DUPLICATE').length
+                    ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                    : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50'
+                }`}
+              >
+                Duplicate ({rules.filter(r => r.rule_type === 'DUPLICATE').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRules(rules.filter(r => r.rule_type === 'NULL_CHECK').map(r => r.rule_code))}
+                className={`px-1.5 py-0.5 rounded border transition-colors ${
+                  selectedRules.length > 0 && selectedRules.every(code => rules.find(r => r.rule_code === code)?.rule_type === 'NULL_CHECK') && selectedRules.length === rules.filter(r => r.rule_type === 'NULL_CHECK').length
+                    ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                    : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                }`}
+              >
+                Null ({rules.filter(r => r.rule_type === 'NULL_CHECK').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRules(rules.filter(r => r.rule_type === 'DOMAIN_CHECK').map(r => r.rule_code))}
+                className={`px-1.5 py-0.5 rounded border transition-colors ${
+                  selectedRules.length > 0 && selectedRules.every(code => rules.find(r => r.rule_code === code)?.rule_type === 'DOMAIN_CHECK') && selectedRules.length === rules.filter(r => r.rule_type === 'DOMAIN_CHECK').length
+                    ? 'bg-teal-600 text-white border-teal-600 font-bold'
+                    : 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50'
+                }`}
+              >
+                Domain ({rules.filter(r => r.rule_type === 'DOMAIN_CHECK').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRules([])}
+                className={`px-1.5 py-0.5 rounded border transition-colors ${
+                  selectedRules.length === 0
+                    ? 'bg-slate-700 text-white border-slate-700 font-bold'
+                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                None (0)
+              </button>
             </div>
 
             <div className="p-3 space-y-1.5 max-h-56 overflow-y-auto">
@@ -302,13 +377,24 @@ export const IntegrityScannerPage = () => {
           </div>
 
           <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-            <span>{rules.length} defined integrity rules</span>
-            <button
-              onClick={() => setSelectedRules(rules.map(r => r.rule_code))}
-              className="text-indigo-600 hover:underline font-medium text-xs"
-            >
-              Enable All Rules
-            </button>
+            <span>{selectedRules.length} of {rules.length} rules selected</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedRules(rules.map(r => r.rule_code))}
+                className="text-indigo-600 hover:underline font-medium text-xs"
+              >
+                Enable All
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => setSelectedRules([])}
+                className="text-rose-600 hover:underline font-medium text-xs"
+              >
+                Disable All
+              </button>
+            </div>
           </div>
         </div>
 
@@ -321,6 +407,13 @@ export const IntegrityScannerPage = () => {
             <p className="text-xs text-slate-500 leading-relaxed">
               Executes parameterized SQL validation checks against all six database tables inside the active MySQL schema catalog.
             </p>
+
+            {selectedRules.length === 0 && (
+              <div className="mt-3 p-2.5 rounded bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>No active integrity rules selected. 0 checks will execute upon trigger.</span>
+              </div>
+            )}
 
             {scanResult ? (
               <div className="mt-3 p-3 rounded bg-slate-50 border border-slate-200 text-xs font-mono space-y-1.5">
@@ -363,7 +456,7 @@ export const IntegrityScannerPage = () => {
               onClick={handleExecuteScan}
               className="w-full"
             >
-              {isScanning ? 'Scanning All 6 Tables...' : 'Run Full Integrity Scan'}
+              {isScanning ? 'Executing Selected Rules...' : selectedRules.length === 0 ? 'Execute Scan (0 Rules)' : `Run Integrity Scan (${selectedRules.length} Rules)`}
             </Button>
           </div>
         </div>

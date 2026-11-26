@@ -173,6 +173,91 @@ CREATE TABLE IF NOT EXISTS `database_metadata` (
     `meta_value` TEXT NOT NULL,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Staging Departments Table
+CREATE TABLE IF NOT EXISTS `staging_departments` (
+    `staging_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `external_ref` VARCHAR(50) NULL,
+    `dept_code` VARCHAR(50) NULL,
+    `dept_name` VARCHAR(150) NULL,
+    `building` VARCHAR(100) NULL,
+    `budget` DECIMAL(12, 2) NULL,
+    `validation_status` ENUM('PENDING', 'VALID', 'REJECTED', 'QUARANTINED') DEFAULT 'PENDING',
+    `validation_error` TEXT NULL,
+    `imported_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Staging Instructors Table
+CREATE TABLE IF NOT EXISTS `staging_instructors` (
+    `staging_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `external_ref` VARCHAR(50) NULL,
+    `instructor_name` VARCHAR(100) NULL,
+    `email` VARCHAR(150) NULL,
+    `dept_id` INT NULL,
+    `salary` DECIMAL(10, 2) NULL,
+    `hire_date` DATE NULL,
+    `validation_status` ENUM('PENDING', 'VALID', 'REJECTED', 'QUARANTINED') DEFAULT 'PENDING',
+    `validation_error` TEXT NULL,
+    `imported_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Staging Courses Table
+CREATE TABLE IF NOT EXISTS `staging_courses` (
+    `staging_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `external_ref` VARCHAR(50) NULL,
+    `course_code` VARCHAR(50) NULL,
+    `course_name` VARCHAR(150) NULL,
+    `credits` INT NULL,
+    `dept_id` INT NULL,
+    `instructor_id` INT NULL,
+    `validation_status` ENUM('PENDING', 'VALID', 'REJECTED', 'QUARANTINED') DEFAULT 'PENDING',
+    `validation_error` TEXT NULL,
+    `imported_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Staging Students Table
+CREATE TABLE IF NOT EXISTS `staging_students` (
+    `staging_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `external_ref` VARCHAR(50) NULL,
+    `student_name` VARCHAR(100) NULL,
+    `email` VARCHAR(150) NULL,
+    `age` INT NULL,
+    `gpa` DECIMAL(3, 2) NULL,
+    `dept_id` INT NULL,
+    `enrollment_year` INT NULL,
+    `validation_status` ENUM('PENDING', 'VALID', 'REJECTED', 'QUARANTINED') DEFAULT 'PENDING',
+    `validation_error` TEXT NULL,
+    `imported_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Staging Enrollments Table
+CREATE TABLE IF NOT EXISTS `staging_enrollments` (
+    `staging_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `external_ref` VARCHAR(50) NULL,
+    `student_id` INT NULL,
+    `course_id` INT NULL,
+    `student_email` VARCHAR(150) NULL,
+    `enrolled_on` DATE NULL,
+    `grade_marks` DECIMAL(5, 2) NULL,
+    `status` VARCHAR(50) NULL,
+    `notes` VARCHAR(255) NULL,
+    `validation_status` ENUM('PENDING', 'VALID', 'REJECTED', 'QUARANTINED') DEFAULT 'PENDING',
+    `validation_error` TEXT NULL,
+    `imported_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Staging Classrooms Table
+CREATE TABLE IF NOT EXISTS `staging_classrooms` (
+    `staging_id` INT AUTO_INCREMENT PRIMARY KEY,
+    `external_ref` VARCHAR(50) NULL,
+    `room_number` VARCHAR(50) NULL,
+    `building` VARCHAR(100) NULL,
+    `capacity` INT NULL,
+    `dept_id` INT NULL,
+    `validation_status` ENUM('PENDING', 'VALID', 'REJECTED', 'QUARANTINED') DEFAULT 'PENDING',
+    `validation_error` TEXT NULL,
+    `imported_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 """
 
 ACADEMIC_INTEGRITY_RULES = [
@@ -1026,6 +1111,24 @@ def ensure_system_tables_exist(conn=None) -> bool:
                 VALUES ('schema_type', 'ACADEMIC_SYSTEM')
                 ON DUPLICATE KEY UPDATE `meta_value` = 'ACADEMIC_SYSTEM'
             """)
+
+            # 4. Ensure all staging tables possess validation_status and validation_error columns
+            staging_tables = [
+                'staging_departments', 'staging_instructors', 'staging_courses',
+                'staging_students', 'staging_enrollments', 'staging_classrooms'
+            ]
+            for stg_tbl in staging_tables:
+                try:
+                    cur.execute(f"SHOW TABLES LIKE '{stg_tbl}'")
+                    if cur.fetchone():
+                        cur.execute(f"SHOW COLUMNS FROM `{stg_tbl}`")
+                        existing_cols = {c["Field"] for c in cur.fetchall()}
+                        if "validation_status" not in existing_cols:
+                            cur.execute(f"ALTER TABLE `{stg_tbl}` ADD COLUMN `validation_status` ENUM('PENDING', 'VALID', 'REJECTED', 'QUARANTINED') DEFAULT 'PENDING'")
+                        if "validation_error" not in existing_cols:
+                            cur.execute(f"ALTER TABLE `{stg_tbl}` ADD COLUMN `validation_error` TEXT NULL")
+                except Exception as ex:
+                    logger.debug(f"Column check for {stg_tbl}: {ex}")
 
         conn.commit()
         return True

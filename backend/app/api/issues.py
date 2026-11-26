@@ -8,6 +8,7 @@ router = APIRouter(prefix="/issues", tags=["Integrity Issues Management"])
 
 @router.get("", response_model=ApiResponse[Dict[str, Any]])
 def list_issues(
+    scan_id: Optional[str] = None,
     status: Optional[str] = None,
     category: Optional[str] = None,
     severity: Optional[str] = None,
@@ -23,6 +24,9 @@ def list_issues(
             where_clauses = ["1=1"]
             params = []
 
+            if scan_id:
+                where_clauses.append("i.scan_id = %s")
+                params.append(scan_id)
             if status:
                 where_clauses.append("i.status = %s")
                 params.append(status)

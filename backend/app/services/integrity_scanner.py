@@ -91,6 +91,7 @@ class IntegrityScanner:
         scan_type: str = "FULL",
         target_tables: Optional[List[str]] = None,
         rule_codes: Optional[List[str]] = None,
+        rule_types: Optional[List[str]] = None,
         operator: str = "SYSTEM"
     ) -> Dict[str, Any]:
         """
@@ -138,17 +139,19 @@ class IntegrityScanner:
                     total_rows_inspected += res["c"] if res else 0
 
             # Step 3: Fetch active integrity rules for target tables
-            active_rules = self._get_active_rules(conn, tables_to_scan, rule_codes)
+            active_rules = self._get_active_rules(conn, tables_to_scan, rule_codes, rule_types)
 
             # Step 4: Execute each rule's detection algorithm
             for rule in active_rules:
                 issues = self._execute_rule(conn, scan_id, rule)
                 detected_issues.extend(issues)
 
-            # Step 5: Also inspect declared Foreign Keys in INFORMATION_SCHEMA for business child tables
-            rule_fk_covered = {(r["target_table"], r["target_column"]) for r in active_rules if r.get("rule_type") == "ORPHAN"}
-            fk_issues = self._scan_declared_foreign_keys(conn, scan_id, tables_to_scan, rule_fk_covered)
-            detected_issues.extend(fk_issues)
+            # Step 5: Only inspect declared Foreign Keys in INFORMATION_SCHEMA if no explicit rule selection was requested.
+            # When specific rule_codes or rule_types are requested, only those requested rules must execute.
+            if rule_codes is None and rule_types is None:
+                rule_fk_covered = {(r["target_table"], r["target_column"]) for r in active_rules if r.get("rule_type") == "ORPHAN"}
+                fk_issues = self._scan_declared_foreign_keys(conn, scan_id, tables_to_scan, rule_fk_covered)
+                detected_issues.extend(fk_issues)
 
             # Step 5b: Full scans strictly target the 6 core business tables
             # System, staging, and audit tables are strictly excluded from business scanning
@@ -444,15 +447,40 @@ class IntegrityScanner:
         finally:
             conn.close()
 
-    def _get_active_rules(self, conn, tables: List[str], rule_codes: Optional[List[str]]) -> List[Dict[str, Any]]:
+    def _get_active_rules(
+        self,
+        conn,
+        tables: List[str],
+        rule_codes: Optional[List[str]] = None,
+        rule_types: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        # If an empty list was explicitly supplied, execute ZERO rules (do not fallback to all)
+        if rule_codes is not None and len(rule_codes) == 0:
+            return []
+        if rule_types is not None and len(rule_types) == 0:
+            return []
+
         with conn.cursor() as cur:
             format_strings = ','.join(['%s'] * len(tables))
             sql = f"SELECT * FROM integrity_rules WHERE is_enabled = TRUE AND target_table IN ({format_strings})"
             params = list(tables)
+
             if rule_codes and len(rule_codes) > 0:
                 rc_placeholders = ','.join(['%s'] * len(rule_codes))
                 sql += f" AND rule_code IN ({rc_placeholders})"
                 params.extend(rule_codes)
+
+            if rule_types and len(rule_types) > 0:
+                norm_types = []
+                for rt in rule_types:
+                    clean_rt = rt.strip().upper()
+                    if clean_rt == "ORPHAN_CHECK": clean_rt = "ORPHAN"
+                    elif clean_rt == "DUPLICATE_CHECK": clean_rt = "DUPLICATE"
+                    norm_types.append(clean_rt)
+                rt_placeholders = ','.join(['%s'] * len(norm_types))
+                sql += f" AND rule_type IN ({rt_placeholders})"
+                params.extend(norm_types)
+
             cur.execute(sql, tuple(params))
             rules = cur.fetchall()
             for r in rules:
@@ -486,6 +514,11 @@ class IntegrityScanner:
         target_table = validate_identifier(rule["target_table"])
         pk_col = self._get_primary_key(conn, target_table)
         params = rule.get("parameters_json") or {}
+        if isinstance(params, str):
+            try:
+                params = json.loads(params)
+            except Exception:
+                params = {}
 
         with conn.cursor() as cur:
             # 1. ORPHAN CHECK

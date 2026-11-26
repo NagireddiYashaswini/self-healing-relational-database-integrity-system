@@ -17,6 +17,7 @@ def trigger_scan(payload: ScanTriggerRequest):
             scan_type=payload.scan_type,
             target_tables=payload.target_tables,
             rule_codes=payload.rule_codes,
+            rule_types=payload.rule_types,
             operator="ADMIN_USER"
         )
         return ApiResponse(

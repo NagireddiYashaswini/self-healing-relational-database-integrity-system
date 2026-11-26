@@ -100,26 +100,43 @@ export const RulesConfigurationPage = () => {
   };
 
   const handleCreateRule = async () => {
-    if (!ruleCode || !ruleName || !targetTable || !targetColumn) {
-      alert('Please fill all mandatory fields (Code, Name, Target Table, Target Column).');
+    const trimmedCode = ruleCode.trim();
+    const trimmedName = ruleName.trim();
+    const trimmedCol = targetColumn.trim();
+
+    if (!trimmedCode || !trimmedName || !targetTable || !trimmedCol) {
+      alert('Please fill all mandatory fields (Rule Code, Rule Name, Target Table, Target Column).');
       return;
     }
+
+    const ruleCodePattern = /^[a-zA-Z0-9_-]{1,50}$/;
+    if (!ruleCodePattern.test(trimmedCode)) {
+      alert(`Invalid Rule Code '${trimmedCode}'. Rule code must be 1 to 50 alphanumeric characters, underscores, or hyphens (e.g., '52' or 'RULE_STUDENT_GPA').`);
+      return;
+    }
+
     setCreating(true);
     try {
       let parsedParams = null;
       if (parametersJson.trim()) {
-        parsedParams = JSON.parse(parametersJson);
+        try {
+          parsedParams = JSON.parse(parametersJson);
+        } catch (jsonErr) {
+          alert(`Invalid JSON format in Rule Parameters: ${jsonErr.message}`);
+          setCreating(false);
+          return;
+        }
       }
 
       await rulesApi.createRule({
-        rule_code: ruleCode,
-        name: ruleName,
-        description: description || ruleName,
+        rule_code: trimmedCode,
+        name: trimmedName,
+        description: description.trim() || trimmedName,
         rule_type: ruleType,
         target_table: targetTable,
-        target_column: targetColumn,
-        parent_table: parentTable || null,
-        parent_column: parentColumn || null,
+        target_column: trimmedCol,
+        parent_table: parentTable.trim() || null,
+        parent_column: parentColumn.trim() || null,
         parameters_json: parsedParams,
         severity: severity,
         is_enabled: true,
@@ -129,9 +146,13 @@ export const RulesConfigurationPage = () => {
       setRuleCode('');
       setRuleName('');
       setDescription('');
+      setTargetColumn('');
+      setParentTable('');
+      setParentColumn('');
       await fetchRulesAndTables();
     } catch (err) {
-      alert(`Failed to create rule: ${err.message}`);
+      const errorDetail = err.response?.data?.detail || err.message;
+      alert(`Failed to create rule: ${errorDetail}`);
     } finally {
       setCreating(false);
     }
@@ -433,14 +454,21 @@ export const RulesConfigurationPage = () => {
       >
         <div className="space-y-3.5 text-xs">
           <div>
-            <label className="font-semibold text-slate-700 block mb-1">Rule Code (Unique ID):</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="font-semibold text-slate-700 block">Rule Code (Unique ID):</label>
+              <span className="text-[10px] text-slate-400">e.g. 52, RULE_STUDENT_GPA</span>
+            </div>
             <input
               type="text"
               value={ruleCode}
-              onChange={(e) => setRuleCode(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
-              placeholder="e.g. RULE_DOMAIN_STUDENT_SCORE"
+              onChange={(e) => setRuleCode(e.target.value.replace(/\s+/g, '_'))}
+              placeholder="e.g. 52 or RULE_DOMAIN_STUDENT_SCORE"
+              maxLength={50}
               className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-slate-900 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
             />
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Unique application identifier. Supports numeric codes (e.g. 52) and alphanumeric codes with hyphens/underscores.
+            </p>
           </div>
 
           <div>
